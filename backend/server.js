@@ -230,6 +230,13 @@ initDb().then(async db => {
       skip_private ? 1 : 0, skip_dmed ? 1 : 0,
       use_ai_enhance ? 1 : 0, image_url || ''
     );
+    // Auto-stop any other running/pending campaigns for same account
+    db.prepare(
+      "UPDATE campaigns SET status='stopped', finished_at=? WHERE account_id=? AND id!=? AND status IN ('running','pending')"
+    ).run(new Date().toISOString(), account_id, id);
+    // New campaign starts immediately as running
+    db.prepare("UPDATE campaigns SET status='running', started_at=? WHERE id=?").run(new Date().toISOString(), id);
+    console.log('[InstaReach] New campaign started:', name, '| Previous campaigns stopped');
     res.json({ id, name });
   });
 
@@ -239,6 +246,19 @@ initDb().then(async db => {
     if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const now = new Date().toISOString();
     if (status === 'running') {
+      // ── Auto-stop any OTHER running campaigns for same account ──
+      const camp = db.prepare('SELECT account_id FROM campaigns WHERE id = ?').get(req.params.id);
+      if (camp) {
+        const running = db.prepare(
+          "SELECT id FROM campaigns WHERE account_id = ? AND status = 'running' AND id != ?"
+        ).all(camp.account_id, req.params.id);
+        if (running.length > 0) {
+          running.forEach(r => {
+            db.prepare('UPDATE campaigns SET status = ?, finished_at = ? WHERE id = ?').run('stopped', now, r.id);
+            console.log('[InstaReach] Auto-stopped campaign:', r.id, '(new campaign started)');
+          });
+        }
+      }
       db.prepare('UPDATE campaigns SET status = ?, started_at = ? WHERE id = ?').run(status, now, req.params.id);
     } else if (['done','stopped'].includes(status)) {
       db.prepare('UPDATE campaigns SET status = ?, finished_at = ? WHERE id = ?').run(status, now, req.params.id);
