@@ -484,15 +484,35 @@ initDb().then(async db => {
   app.post('/api/pybot/start', auth, (req, res) => {
     if (global._pythonBot) return res.status(409).json({ error: 'Python bot already running' });
 
+    const { campaign_id, account_id } = req.body;
+
+    // Get session_id from DB
+    let sessionId = process.env.SESSION_ID || '';
+    if (account_id) {
+      const acc = db.prepare('SELECT session_id FROM accounts WHERE id = ?').get(account_id);
+      if (acc && acc.session_id) sessionId = acc.session_id;
+    }
+
+    // Set campaign to running
+    if (campaign_id) {
+      const now = new Date().toISOString();
+      db.prepare("UPDATE campaigns SET status='stopped', finished_at=? WHERE account_id=? AND id!=? AND status IN ('running','pending')")
+        .run(now, account_id, campaign_id);
+      db.prepare("UPDATE campaigns SET status='running', started_at=? WHERE id=?")
+        .run(now, campaign_id);
+    }
+
     const env = {
       ...process.env,
-      API_URL:    `http://localhost:${PORT}`,
+      API_URL:    'http://localhost:' + PORT,
       ADMIN_USER: process.env.ADMIN_USERNAME || 'admin',
       ADMIN_PASS: process.env.ADMIN_PASSWORD || 'changeme123',
-      ACCOUNT_ID: req.body.account_id || '',
-      SESSION_ID: req.body.session_id || '',
+      ACCOUNT_ID: account_id || process.env.ACCOUNT_ID || '',
+      SESSION_ID: sessionId,
+      CAMPAIGN_ID: campaign_id || '',
     };
 
+    console.log('[PyBot] Starting | account:', account_id, '| session:', sessionId.slice(0,15) + '...');
     const py = spawn('python3', ['worker.py'], { env, cwd: __dirname });
     global._pythonBot = py;
 
