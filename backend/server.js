@@ -159,6 +159,21 @@ initDb().then(async db => {
     console.log('[InstaReach] Admin created:', process.env.ADMIN_USERNAME || 'admin');
   }
 
+
+  // ── Auto-seed account from env vars (survives deploys) ────────
+  const SEED_SESSION    = process.env.SESSION_ID || '';
+  const SEED_ACCOUNT_ID = process.env.ACCOUNT_ID || '';
+  const SEED_IG_USER    = process.env.IG_USERNAME || 'manofox_official';
+  if (SEED_SESSION && SEED_ACCOUNT_ID) {
+    const existingAcc = db.prepare('SELECT id FROM accounts WHERE id = ?').get(SEED_ACCOUNT_ID);
+    if (!existingAcc) {
+      db.prepare('INSERT OR IGNORE INTO accounts (id, username, session_id, status, dms_today, dms_total) VALUES (?,?,?,?,?,?)').run(SEED_ACCOUNT_ID, SEED_IG_USER, SEED_SESSION, 'idle', 0, 0);
+      console.log('[InstaReach] Auto-seeded account:', SEED_IG_USER);
+    } else {
+      db.prepare('UPDATE accounts SET session_id=?, username=? WHERE id=?').run(SEED_SESSION, SEED_IG_USER, SEED_ACCOUNT_ID);
+      console.log('[InstaReach] Account session synced:', SEED_IG_USER);
+    }
+  }
   // ══════════════════════════════════════════════════════════════
   // AUTH
   // ══════════════════════════════════════════════════════════════
