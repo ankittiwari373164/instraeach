@@ -7,6 +7,7 @@ const jwt      = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
 const bot        = require('./bot');
+const { spawn }  = require('child_process');
 const path     = require('path');
 const fs       = require('fs');
 const https    = require('https');
@@ -564,7 +565,54 @@ initDb().then(async db => {
 
   // GET /api/bot/status — returns bot running state
   app.get('/api/bot/status', auth, (req, res) => {
-    res.json({ running: bot.isRunning(), job: bot.getJob() });
+    res.json({ running: bot.isRunning(), job: bot.getJob(), pythonRunning: !!global._pythonBot });
+  });
+
+  // ── Python instagrapi bot (no browser needed) ─────────────
+  app.post('/api/pybot/start', auth, (req, res) => {
+    if (global._pythonBot) return res.status(409).json({ error: 'Python bot already running' });
+
+    const env = {
+      ...process.env,
+      API_URL:    `http://localhost:${PORT}`,
+      ADMIN_USER: process.env.ADMIN_USERNAME || 'admin',
+      ADMIN_PASS: process.env.ADMIN_PASSWORD || 'changeme123',
+      ACCOUNT_ID: req.body.account_id || '',
+      SESSION_ID: req.body.session_id || '',
+    };
+
+    const py = spawn('python3', ['worker.py'], { env, cwd: __dirname });
+    global._pythonBot = py;
+
+    py.stdout.on('data', d => {
+      const lines = d.toString().trim().split('
+');
+      lines.forEach(line => {
+        console.log('[PyBot]', line);
+        // Store last 200 log lines in memory for dashboard
+        if (!global._pyLogs) global._pyLogs = [];
+        global._pyLogs.push({ ts: new Date().toISOString(), msg: line });
+        if (global._pyLogs.length > 200) global._pyLogs.shift();
+      });
+    });
+    py.stderr.on('data', d => console.error('[PyBot ERR]', d.toString().trim()));
+    py.on('close', code => {
+      console.log('[PyBot] Process ended, code:', code);
+      global._pythonBot = null;
+    });
+
+    res.json({ ok: true, message: 'Python bot started — no browser needed!' });
+  });
+
+  app.post('/api/pybot/stop', auth, (req, res) => {
+    if (!global._pythonBot) return res.json({ ok: true, message: 'Not running' });
+    global._pythonBot.kill('SIGTERM');
+    global._pythonBot = null;
+    res.json({ ok: true, message: 'Python bot stopped' });
+  });
+
+  app.get('/api/pybot/logs', auth, (req, res) => {
+    res.json(global._pyLogs || []);
   });
 
   // ══════════════════════════════════════════════════════════════

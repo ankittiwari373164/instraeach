@@ -1088,8 +1088,8 @@ function renderCampaignsTable() {
         <td><span class="pill pill-${c.status}">${c.status}</span></td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDate(c.created_at)}</td>
         <td><div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${c.status === 'pending' || c.status === 'paused' || c.status === 'stopped' ? `<button class="btn btn-success btn-sm" onclick="startBot('${c.id}')">🤖 Run Bot</button>` : ''}
-          ${c.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${c.id}')">■ Stop Bot</button>` : ''}
+          ${c.status !== 'running' ? `<button class="btn btn-success btn-sm" onclick="startPyBot('${c.id}','${c.account_id}')">🐍 Run Bot (24/7)</button>` : ''}
+          ${c.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopPyBot()">■ Stop Bot</button>` : ''}
           ${c.status === 'pending' || c.status === 'paused' ? `<button class="btn btn-success btn-sm" onclick="setCampStatus('${c.id}','running')">▶ Start</button>` : ''}
           ${c.status !== 'done' && c.status !== 'stopped' ? `<button class="btn btn-danger btn-sm" onclick="setCampStatus('${c.id}','stopped')">■ Stop</button>` : ''}
           <button class="btn btn-outline btn-sm" onclick="deleteCampaign('${c.id}','${c.name}')">🗑</button>
@@ -1097,6 +1097,28 @@ function renderCampaignsTable() {
       </tr>
     `;
   }).join('');
+}
+
+async function startPyBot(campaignId, accountId) {
+  if (!confirm('Start Python bot? Runs 24/7 on the server — no browser needed!')) return;
+  // Get session_id for this account
+  const accs = await apiFetch('/api/accounts', 'GET');
+  // We pass account_id, server looks up session_id internally
+  const r = await apiFetch('/api/pybot/start', 'POST', { account_id: accountId });
+  if (r.ok) {
+    // Also set campaign to running
+    await apiFetch('/api/campaigns/' + campaignId + '/status', 'PATCH', { status: 'running' });
+    showToast('🐍 Python bot started! Running 24/7 on server — close your PC!', 'success');
+    loadCampaigns();
+  } else {
+    showToast('Error: ' + (r.data?.error || 'Failed'), 'error');
+  }
+}
+
+async function stopPyBot() {
+  const r = await apiFetch('/api/pybot/stop', 'POST', {});
+  showToast(r.ok ? 'Bot stopped.' : 'Error stopping bot', r.ok ? 'warn' : 'error');
+  loadCampaigns();
 }
 
 async function startBot(campaignId) {
