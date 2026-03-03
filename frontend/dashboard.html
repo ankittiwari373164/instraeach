@@ -672,7 +672,7 @@ code { background: rgba(196,77,255,0.12); color: var(--accent); padding: 1px 6px
           <div class="step"><div class="step-num">6</div><div class="step-body"><h4>Add Your Instagram Account</h4><p>In the dashboard, go to Accounts → add your Instagram account. To get the <code>sessionid</code>: log into Instagram in Chrome → F12 → Application → Cookies → instagram.com → find <code>sessionid</code> → copy value.</p></div></div>
           <div class="step"><div class="step-num">7</div><div class="step-body"><h4>Create a Campaign</h4><p>Go to New Campaign → fill in all fields → click Create Campaign. Note the campaign ID from the Campaigns tab.</p></div></div>
           <div class="step"><div class="step-num">8</div><div class="step-body"><h4>Generate & Install Script</h4><p>Go to Script Config → select your campaign → enter your backend URL → copy the generated script. In Tampermonkey: click icon → Create New Script → paste → Save (Ctrl+S).</p></div></div>
-          <div class="step"><div class="step-num">9</div><div class="step-body"><h4>Start the Bot</h4><p>Open <code>https://www.instagram.com</code> in the browser with Tampermonkey installed. The script runs automatically. Watch Live Logs to confirm it's working. Keep this browser window open.</p></div></div>
+          <div class="step"><div class="step-num">9</div><div class="step-body"><h4>Start the Bot (Two Options)</h4><p><strong>Option A — Server Bot (24/7, recommended):</strong> Go to Campaigns tab, click <strong>🤖 Run Bot</strong>. The bot runs on your Render server — no browser needed, works even when your PC is off.</p><p><strong>Option B — Tampermonkey:</strong> Open Instagram in browser with Tampermonkey installed. Runs while your browser is open.</p></div></div>
           <div class="divider"></div>
           <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 3 — UptimeRobot (24/7 Keepalive)</div>
           <div class="step"><div class="step-num">10</div><div class="step-body"><h4>Create Free Account</h4><p>Sign up at <code>uptimerobot.com</code> (free plan gives you 50 monitors with 5-min intervals).</p></div></div>
@@ -1088,14 +1088,37 @@ function renderCampaignsTable() {
         <td><span class="pill pill-${c.status}">${c.status}</span></td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDate(c.created_at)}</td>
         <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${c.status === 'pending' || c.status === 'paused' || c.status === 'stopped' ? `<button class="btn btn-success btn-sm" onclick="startBot('${c.id}')">🤖 Run Bot</button>` : ''}
+          ${c.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${c.id}')">■ Stop Bot</button>` : ''}
           ${c.status === 'pending' || c.status === 'paused' ? `<button class="btn btn-success btn-sm" onclick="setCampStatus('${c.id}','running')">▶ Start</button>` : ''}
-          ${c.status === 'running' ? `<button class="btn btn-warn btn-sm" onclick="setCampStatus('${c.id}','paused')">⏸ Pause</button>` : ''}
           ${c.status !== 'done' && c.status !== 'stopped' ? `<button class="btn btn-danger btn-sm" onclick="setCampStatus('${c.id}','stopped')">■ Stop</button>` : ''}
           <button class="btn btn-outline btn-sm" onclick="deleteCampaign('${c.id}','${c.name}')">🗑</button>
         </div></td>
       </tr>
     `;
   }).join('');
+}
+
+async function startBot(campaignId) {
+  if (!confirm('Start Puppeteer bot for this campaign? It will run on the server 24/7.')) return;
+  const r = await apiFetch('/api/bot/start', 'POST', { campaign_id: campaignId });
+  if (r.ok) {
+    showToast('🤖 Bot started! Running on server 24/7.', 'success');
+    loadCampaigns();
+  } else {
+    showToast('Error: ' + (r.data?.error || 'Failed to start bot'), 'error');
+  }
+}
+
+async function stopBot(campaignId) {
+  if (!confirm('Stop the running bot?')) return;
+  const r = await apiFetch('/api/bot/stop', 'POST', {});
+  if (r.ok) {
+    showToast('Bot stopped.', 'warn');
+    loadCampaigns();
+  } else {
+    showToast('Error: ' + (r.data?.error || 'Failed'), 'error');
+  }
 }
 
 async function setCampStatus(id, status) {
