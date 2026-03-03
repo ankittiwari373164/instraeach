@@ -10,19 +10,19 @@ const { spawn, execSync }  = require('child_process');
 const path     = require('path');
 const fs       = require('fs');
 
-// ── Install Python deps at startup if needed ──────────────────
+// ── Install Python deps into vendor dir ──────────────────────
+const VENDOR_DIR = path.join(__dirname, 'vendor');
+if (!fs.existsSync(VENDOR_DIR)) fs.mkdirSync(VENDOR_DIR, { recursive: true });
 try {
-  execSync('python3 -c "import instagrapi"', { stdio: 'ignore' });
-  console.log('[InstaReach] Python instagrapi ✓ already installed');
+  execSync('python3 -c "import sys; sys.path.insert(0,process.env.VENDOR_DIR||"./vendor"); import instagrapi"', { stdio: 'ignore', env: { ...process.env, VENDOR_DIR } });
+  console.log('[InstaReach] Python instagrapi already installed');
 } catch {
-  console.log('[InstaReach] Installing Python dependencies...');
+  console.log('[InstaReach] Installing Python dependencies to vendor/...');
   try {
-    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --break-system-packages', { 
-      stdio: 'inherit', timeout: 120000 
-    });
-    console.log('[InstaReach] Python dependencies installed ✓');
+    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --target=' + VENDOR_DIR, { stdio: 'inherit', timeout: 180000 });
+    console.log('[InstaReach] Python dependencies installed');
   } catch(e) {
-    console.warn('[InstaReach] pip3 install failed:', e.message, '— Python bot may not work');
+    console.warn('[InstaReach] pip3 install failed:', e.message);
   }
 }
 const https    = require('https');
@@ -513,7 +513,8 @@ initDb().then(async db => {
     };
 
     console.log('[PyBot] Starting | account:', account_id, '| session:', sessionId.slice(0,15) + '...');
-    const py = spawn('python3', ['worker.py'], { env, cwd: __dirname });
+    const pyEnv = { ...env, PYTHONPATH: VENDOR_DIR };
+const py = spawn('python3', ['-u', 'worker.py'], { env: pyEnv, cwd: __dirname });
     global._pythonBot = py;
 
     py.stdout.on('data', d => {
