@@ -489,8 +489,7 @@ initDb().then(async db => {
     global._pythonBot = py;
 
     py.stdout.on('data', d => {
-      const lines = d.toString().trim().split('
-');
+      const lines = d.toString().trim().split('\n');
       lines.forEach(line => {
         console.log('[PyBot]', line);
         // Store last 200 log lines in memory for dashboard
