@@ -7,7 +7,23 @@ const jwt      = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
 const bot        = require('./bot');
-const { spawn }  = require('child_process');
+const { spawn, execSync }  = require('child_process');
+
+// ── Install Python deps at startup if needed ──────────────────
+try {
+  execSync('python3 -c "import instagrapi"', { stdio: 'ignore' });
+  console.log('[InstaReach] Python instagrapi ✓ already installed');
+} catch {
+  console.log('[InstaReach] Installing Python dependencies...');
+  try {
+    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --no-warn-script-location', { 
+      stdio: 'inherit', timeout: 120000 
+    });
+    console.log('[InstaReach] Python dependencies installed ✓');
+  } catch(e) {
+    console.warn('[InstaReach] pip3 install failed:', e.message, '— Python bot may not work');
+  }
+}
 const path     = require('path');
 const fs       = require('fs');
 const https    = require('https');
