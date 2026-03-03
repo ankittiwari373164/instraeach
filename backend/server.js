@@ -6,7 +6,6 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
-const bot        = require('./bot');
 const { spawn, execSync }  = require('child_process');
 
 // ── Install Python deps at startup if needed ──────────────────
@@ -470,121 +469,10 @@ initDb().then(async db => {
 
 
   // ══════════════════════════════════════════════════════════════
-  // BOT CONTROL — Puppeteer automation (runs on server, 24/7)
+  // BOT CONTROL
   // ══════════════════════════════════════════════════════════════
 
-  // POST /api/bot/start — starts the Puppeteer bot for a campaign
-  app.post('/api/bot/start', auth, async (req, res) => {
-    const { campaign_id } = req.body;
-    if (!campaign_id) return res.status(400).json({ error: 'campaign_id required' });
-
-    if (bot.isRunning()) {
-      return res.status(409).json({ error: 'Bot already running', job: bot.getJob() });
-    }
-
-    const campaign = db.prepare(`
-      SELECT c.*, a.session_id, a.username, a.cooldown_ms, a.daily_limit, a.id AS acc_id
-      FROM campaigns c LEFT JOIN accounts a ON c.account_id = a.id
-      WHERE c.id = ?
-    `).get(campaign_id);
-
-    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
-    if (!campaign.session_id) return res.status(400).json({ error: 'No session_id on account' });
-
-    // Auto-stop other campaigns
-    const now = new Date().toISOString();
-    db.prepare(
-      "UPDATE campaigns SET status='stopped', finished_at=? WHERE account_id=? AND id!=? AND status IN ('running','pending')"
-    ).run(now, campaign.account_id, campaign_id);
-    db.prepare("UPDATE campaigns SET status='running', started_at=? WHERE id=?").run(now, campaign_id);
-
-    // Load already-processed
-    const processed = db.prepare(
-      'SELECT target_username FROM processed_accounts WHERE account_id = ? AND dm_sent = 1'
-    ).all(campaign.account_id);
-    const processedSet = new Set(processed.map(r => r.target_username));
-
-    // Logger that writes to DB
-    const logToDb = (message, level = 'info', username = null) => {
-      try {
-        db.prepare('INSERT INTO logs (account_id,campaign_id,level,message,username) VALUES (?,?,?,?,?)')
-          .run(campaign.account_id, campaign_id, level, message, username || null);
-      } catch {}
-    };
-
-    // Mark processed helper
-    const markProcessedFn = (username, sent) => {
-      try {
-        const existing = db.prepare(
-          'SELECT id, dm_sent FROM processed_accounts WHERE account_id=? AND target_username=?'
-        ).get(campaign.account_id, username);
-        if (existing) {
-          if (sent && !existing.dm_sent) {
-            db.prepare('UPDATE processed_accounts SET dm_sent=1, dm_sent_at=? WHERE account_id=? AND target_username=?')
-              .run(new Date().toISOString(), campaign.account_id, username);
-          }
-        } else {
-          db.prepare('INSERT INTO processed_accounts (account_id,target_username,source,dm_sent,dm_sent_at) VALUES (?,?,?,?,?)')
-            .run(campaign.account_id, username, 'bot', sent ? 1 : 0, sent ? new Date().toISOString() : null);
-        }
-        if (sent) {
-          db.prepare('UPDATE accounts SET dms_today=dms_today+1, dms_total=dms_total+1, last_active=? WHERE id=?')
-            .run(new Date().toISOString(), campaign.account_id);
-          db.prepare('UPDATE campaigns SET dms_sent=dms_sent+1 WHERE id=?').run(campaign_id);
-        }
-      } catch {}
-    };
-
-    // Check if still running (called each DM cycle)
-    const checkRunningFn = async () => {
-      const row = db.prepare("SELECT status FROM campaigns WHERE id=?").get(campaign_id);
-      return row?.status === 'running';
-    };
-
-    // Account object
-    const account = {
-      id:         campaign.acc_id,
-      username:   campaign.username,
-      session_id: campaign.session_id,
-      cooldown_ms: campaign.cooldown_ms || 13000,
-    };
-
-    // Start bot in background (don't await)
-    bot.runCampaign({
-      campaign, account, processedSet,
-      groqEnhanceFn: (msg, ctx) => groqEnhance(msg, ctx),
-      logToDb, markProcessedFn, checkRunningFn,
-    }).then(() => {
-      // Mark campaign done when bot finishes naturally
-      const status = db.prepare("SELECT status FROM campaigns WHERE id=?").get(campaign_id);
-      if (status?.status === 'running') {
-        db.prepare("UPDATE campaigns SET status='done', finished_at=? WHERE id=?")
-          .run(new Date().toISOString(), campaign_id);
-      }
-    }).catch(e => console.error('[Bot] Uncaught:', e.message));
-
-    console.log('[InstaReach] Bot started for campaign:', campaign.name);
-    res.json({ ok: true, message: 'Bot started', campaign: campaign.name });
-  });
-
-  // POST /api/bot/stop — stops the running bot
-  app.post('/api/bot/stop', auth, (req, res) => {
-    if (!bot.isRunning()) return res.json({ ok: true, message: 'Bot was not running' });
-    bot.stopBot();
-    const job = bot.getJob();
-    if (job?.campaignId) {
-      db.prepare("UPDATE campaigns SET status='stopped', finished_at=? WHERE id=?")
-        .run(new Date().toISOString(), job.campaignId);
-    }
-    res.json({ ok: true, message: 'Stop signal sent' });
-  });
-
-  // GET /api/bot/status — returns bot running state
-  app.get('/api/bot/status', auth, (req, res) => {
-    res.json({ running: bot.isRunning(), job: bot.getJob(), pythonRunning: !!global._pythonBot });
-  });
-
-  // ── Python instagrapi bot (no browser needed) ─────────────
+    // ── Python instagrapi bot (no browser needed) ─────────────
   app.post('/api/pybot/start', auth, (req, res) => {
     if (global._pythonBot) return res.status(409).json({ error: 'Python bot already running' });
 
