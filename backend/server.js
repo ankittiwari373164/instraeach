@@ -7,6 +7,8 @@ const jwt      = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
 const { spawn, execSync }  = require('child_process');
+const path     = require('path');
+const fs       = require('fs');
 
 // ── Install Python deps at startup if needed ──────────────────
 try {
@@ -15,7 +17,7 @@ try {
 } catch {
   console.log('[InstaReach] Installing Python dependencies...');
   try {
-    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --no-warn-script-location', { 
+    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --break-system-packages', { 
       stdio: 'inherit', timeout: 120000 
     });
     console.log('[InstaReach] Python dependencies installed ✓');
@@ -23,8 +25,6 @@ try {
     console.warn('[InstaReach] pip3 install failed:', e.message, '— Python bot may not work');
   }
 }
-const path     = require('path');
-const fs       = require('fs');
 const https    = require('https');
 
 const app        = express();
@@ -38,6 +38,14 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json({ limit: '20mb' }));  // allow base64 images in body
+
+// ── Serve frontend dashboard ──────────────────────────────────
+const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+if (fs.existsSync(FRONTEND_DIR)) {
+  app.use(express.static(FRONTEND_DIR));
+  app.get('/', (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'dashboard.html')));
+  app.get('/dashboard', (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'dashboard.html')));
+}
 
 // Serve uploaded images publicly
 app.use('/uploads', express.static(UPLOAD_DIR));
