@@ -15,9 +15,11 @@ from instagrapi.exceptions import (
 API_URL    = os.environ.get('API_URL',    'https://instraeach.onrender.com')
 ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
 ADMIN_PASS = os.environ.get('ADMIN_PASS', 'changeme123')
-ACCOUNT_ID = os.environ.get('ACCOUNT_ID', '')
-SESSION_ID = os.environ.get('SESSION_ID', '')
-SETTINGS_FILE = '/var/data/ig_settings.json'  # persists session on Render disk
+ACCOUNT_ID  = os.environ.get('ACCOUNT_ID',  '')
+SESSION_ID  = os.environ.get('SESSION_ID',  '')
+CAMPAIGN_ID = os.environ.get('CAMPAIGN_ID', '')
+_data_dir = '/var/data' if os.path.isdir('/var/data') else '/tmp'
+SETTINGS_FILE = _data_dir + '/ig_settings.json'  # persists session on Render disk
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger('instraeach')
@@ -201,10 +203,11 @@ def main():
         log.error('No campaigns found')
         sys.exit(1)
 
-    campaign = next(
-        (c for c in campaigns if c.get('status') == 'running' and c.get('account_id') == ACCOUNT_ID),
-        next((c for c in campaigns if c.get('account_id') == ACCOUNT_ID), None)
-    )
+    if CAMPAIGN_ID:
+        campaign = next((c for c in campaigns if c.get('id') == CAMPAIGN_ID), None)
+        log.info('Looking for campaign %s: %s' % (CAMPAIGN_ID, 'found' if campaign else 'NOT FOUND'))
+    else:
+        campaign = next((c for c in campaigns if c.get('account_id') == ACCOUNT_ID), None)
 
     if not campaign:
         log.error('No campaign found for this account')
