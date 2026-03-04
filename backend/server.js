@@ -778,7 +778,7 @@ initDb().then(async db => {
         if (row?.status !== 'running') { L('Campaign stopped from dashboard', 'warn'); break; }
 
         // Build base message (same placeholder replace as TM)
-        let baseMsg = (campaign.message || 'Hi {{username}}!')
+        let baseMsg = (campaign.message || 'Hi {{username}}! I am a property consultant in Delhi specialising in residential real estate. Are you looking to buy or invest? Let's connect!')
           .replace(/\{\{username\}\}/g, username)
           .replace(/\{\{sender\}\}/g,   '@' + (campaign.account_username || ''))
           .replace(/\{\{category\}\}/g, campaign.parent_category || '');
@@ -876,7 +876,7 @@ initDb().then(async db => {
 
     const campaign = db.prepare('SELECT * FROM campaigns WHERE id=?').get(campaign_id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found: ' + campaign_id });
-    if (!campaign.message) return res.status(400).json({ error: 'Campaign has no message set' });
+    // Use default message if none set
 
     // Auto-stop others, set this one running
     const now = new Date().toISOString();
@@ -905,6 +905,18 @@ initDb().then(async db => {
 
   app.get('/api/pybot/logs', auth, (req, res) => {
     res.json(global._pyLogs || []);
+  });
+
+  // Debug: check bot state + DB from browser
+  app.get('/api/bot/debug', auth, (req, res) => {
+    const campaigns = db.prepare('SELECT id, name, status, message, account_id FROM campaigns').all();
+    const accounts  = db.prepare('SELECT id, username, status, LENGTH(session_id) AS session_len FROM accounts').all();
+    res.json({
+      botRunning : _botRunning,
+      botCampaign: _botCampaign,
+      campaigns,
+      accounts,
+    });
   });
 
 
