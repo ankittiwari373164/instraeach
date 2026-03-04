@@ -1159,18 +1159,25 @@ async function loadLogs() {
   let url = '/api/logs?limit=300';
   if (account_id) url += '&account_id=' + account_id;
   try {
-    const logs = await api(url);
+    const [logs, pyLogs] = await Promise.all([api(url), api('/api/pybot/logs').catch(()=>[])]);
     const el = document.getElementById('logs-terminal');
-    if (!logs.length) { el.innerHTML = ''; return; }
-    el.innerHTML = logs.map(l => {
+    if (!logs.length && !pyLogs.length) { el.innerHTML = '<span style="color:#6b7280">No logs yet. Start a campaign and activity will appear here.</span>'; return; }
+    const dbLines = (logs||[]).map(l => {
       const t = l.created_at ? l.created_at.split('T')[1]?.slice(0,8) : '';
-      const lvlClass = l.level === 'error' ? 'log-lvl-error' : l.level === 'warn' ? 'log-lvl-warn' : l.level === 'success' ? 'log-lvl-success' : 'log-lvl-info';
-      const prefix = l.level === 'error' ? '✗' : l.level === 'warn' ? '⚠' : l.level === 'success' ? '✓' : '→';
-      const acc = l.account_username ? `[@${l.account_username}] ` : '';
-      return `<div class="log-entry ${lvlClass}"><span class="log-time">[${t}]</span><span class="log-msg">${prefix} ${acc}${escHtml(l.message)}${l.username ? ' — @'+escHtml(l.username) : ''}</span></div>`;
-    }).join('');
+      const lvlClass = l.level==='error'?'log-lvl-error':l.level==='warn'?'log-lvl-warn':l.level==='success'?'log-lvl-success':'log-lvl-info';
+      const prefix = l.level==='error'?'x':l.level==='warn'?'!':l.level==='success'?'v':'-';
+      const acc = l.account_username ? '[@'+l.account_username+'] ' : '';
+      return '<div class="log-entry '+lvlClass+'"><span class="log-time">['+t+']</span><span class="log-msg">'+prefix+' '+acc+escHtml(l.message)+(l.username?' - @'+escHtml(l.username):'')+'</span></div>';
+    });
+    const pyLines = (pyLogs||[]).map(l => {
+      const t = l.ts ? l.ts.split('T')[1]?.slice(0,8) : '';
+      const isErr = l.msg?.startsWith('ERR:');
+      const lvlClass = isErr?'log-lvl-error':l.msg?.includes('sent')?'log-lvl-success':'log-lvl-info';
+      return '<div class="log-entry '+lvlClass+'"><span class="log-time">['+t+']</span><span class="log-msg" style="color:#a78bfa">P '+escHtml(l.msg)+'</span></div>';
+    });
+    el.innerHTML = [...dbLines, ...pyLines].join('');
     el.scrollTop = el.scrollHeight;
-  } catch(e) {}
+  } catch(e) { console.error('loadLogs:', e); }
 }
 
 async function loadDashLogs() {

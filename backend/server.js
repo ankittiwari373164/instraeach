@@ -527,6 +527,8 @@ initDb().then(async db => {
       CAMPAIGN_ID: campaign_id || '',
     };
 
+    // Test python3 is available
+    try { const v = require('child_process').execSync('python3 --version').toString().trim(); console.log('[PyBot] python3 version:', v); } catch(e) { console.error('[PyBot] python3 not found:', e.message); }
     console.log('[PyBot] Starting | account:', account_id, '| session:', sessionId.slice(0,15) + '...');
     const pyEnv = { ...env, PYTHONPATH: VENDOR_DIR };
 const py = spawn('python3', ['-u', 'worker.py'], { env: pyEnv, cwd: __dirname });
@@ -542,7 +544,8 @@ const py = spawn('python3', ['-u', 'worker.py'], { env: pyEnv, cwd: __dirname })
         if (global._pyLogs.length > 200) global._pyLogs.shift();
       });
     });
-    py.stderr.on('data', d => console.error('[PyBot ERR]', d.toString().trim()));
+    py.stderr.on('data', d => { const msg = d.toString().trim(); console.error('[PyBot ERR]', msg); if (!global._pyLogs) global._pyLogs = []; global._pyLogs.push({ ts: new Date().toISOString(), msg: 'ERR: ' + msg }); });
+    py.on('error', err => { console.error('[PyBot] Failed to start:', err.message); global._pythonBot = null; });
     py.on('close', code => {
       console.log('[PyBot] Process ended, code:', code);
       global._pythonBot = null;
