@@ -778,7 +778,7 @@ initDb().then(async db => {
         if (row?.status !== 'running') { L('Campaign stopped from dashboard', 'warn'); break; }
 
         // Build base message (same placeholder replace as TM)
-        let baseMsg = (campaign.message || 'Hi {{username}}! I am a property consultant in Delhi specialising in residential real estate. Are you looking to buy or invest? Let's connect!')
+        let baseMsg = (campaign.message || 'Hi {{username}}! I am a property consultant in Delhi. Are you looking to buy or invest in real estate? Lets connect!')
           .replace(/\{\{username\}\}/g, username)
           .replace(/\{\{sender\}\}/g,   '@' + (campaign.account_username || ''))
           .replace(/\{\{category\}\}/g, campaign.parent_category || '');
