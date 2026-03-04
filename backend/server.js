@@ -174,6 +174,18 @@ initDb().then(async db => {
       console.log('[InstaReach] Account session synced:', SEED_IG_USER);
     }
   }
+  // ── Auto-seed campaign from env vars ─────────────────────────
+  const SEED_CAMPAIGN_ID = process.env.CAMPAIGN_ID || '';
+  const SEED_CAMPAIGN_NAME = process.env.CAMPAIGN_NAME || 'Main Campaign';
+  const SEED_MESSAGE = process.env.DM_MESSAGE || 'Hi {{username}}! I am {{sender}}, a real estate consultant in Delhi. Are you looking to buy or sell property?';
+  if (SEED_CAMPAIGN_ID && SEED_ACCOUNT_ID && SEED_SESSION) {
+    const existingCamp = db.prepare('SELECT id FROM campaigns WHERE id=?').get(SEED_CAMPAIGN_ID);
+    if (!existingCamp) {
+      db.prepare('INSERT OR IGNORE INTO campaigns (id,account_id,name,message,status,dms_sent,max_dms,cooldown_ms,location,parent_category,sub_category) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(SEED_CAMPAIGN_ID, SEED_ACCOUNT_ID, SEED_CAMPAIGN_NAME, SEED_MESSAGE, 'stopped', 0, 100, 15000, 'Delhi', 'real_estate', 'Residential');
+      console.log('[InstaReach] Auto-seeded campaign:', SEED_CAMPAIGN_NAME);
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════
   // AUTH
   // ══════════════════════════════════════════════════════════════
@@ -733,7 +745,8 @@ initDb().then(async db => {
 
   // ── Bot API endpoints ─────────────────────────────────────────
   app.post('/api/pybot/start', auth, (req, res) => {
-    if (_botRunning) return res.status(409).json({ error: 'Bot already running' });
+    console.log('[Bot] /api/pybot/start called | body:', JSON.stringify(req.body), '| _botRunning:', _botRunning);
+    if (_botRunning) { console.log('[Bot] Already running, rejecting'); return res.status(409).json({ error: 'Bot already running' }); }
 
     const { campaign_id, account_id } = req.body;
     if (!campaign_id || !account_id) return res.status(400).json({ error: 'campaign_id and account_id required' });
