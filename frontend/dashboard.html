@@ -1089,10 +1089,8 @@ function renderCampaignsTable() {
         <td><span class="pill pill-${c.status}">${c.status}</span></td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDate(c.created_at)}</td>
         <td><div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${c.status !== 'running' ? `<button class="btn btn-success btn-sm" onclick="startPyBot('${c.id}','${c.account_id}')">🐍 Run Bot (24/7)</button>` : ''}
-          ${c.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopPyBot()">■ Stop Bot</button>` : ''}
-          ${c.status === 'pending' || c.status === 'paused' ? `<button class="btn btn-success btn-sm" onclick="setCampStatus('${c.id}','running')">▶ Start</button>` : ''}
-          ${c.status !== 'done' && c.status !== 'stopped' ? `<button class="btn btn-danger btn-sm" onclick="setCampStatus('${c.id}','stopped')">■ Stop</button>` : ''}
+          <button class="btn btn-success btn-sm" onclick="startPyBot('${c.id}','${c.account_id}')" ${c.status==='running'?'style="opacity:0.5"':''}>🤖 Run Bot</button>
+          ${c.status === 'running' ? `<button class="btn btn-danger btn-sm" onclick="stopPyBot()">■ Stop</button>` : ''}
           <button class="btn btn-outline btn-sm" onclick="deleteCampaign('${c.id}','${c.name}')">🗑</button>
         </div></td>
       </tr>
@@ -1101,25 +1099,28 @@ function renderCampaignsTable() {
 }
 
 async function startPyBot(campaignId, accountId) {
-  if (!confirm('Start Python bot? Runs 24/7 on the server — no browser needed!')) return;
-  const r = await apiFetch('/api/pybot/start', 'POST', { campaign_id: campaignId, account_id: accountId });
-  if (r.ok) {
-    showToast('🐍 Python bot started! Running 24/7 — close your PC!', 'success');
+  if (!confirm('Start bot? It will run on the server automatically.')) return;
+  const r = await api('/api/pybot/start', 'POST', { campaign_id: campaignId, account_id: accountId });
+  if (r && r.ok) {
+    showToast('✅ Bot started! Campaign: ' + (r.data?.campaign || '') + ' | Check Live Logs tab.', 'success');
     setTimeout(loadCampaigns, 1500);
+    setTimeout(() => { currentTab = 'logs'; loadLogs(); }, 2000);
   } else {
-    showToast('Error: ' + (r.data?.error || 'Failed to start bot'), 'error');
+    const err = r?.data?.error || 'Failed to start bot';
+    showToast('❌ Error: ' + err, 'error');
+    console.error('Bot start error:', r);
   }
 }
 
 async function stopPyBot() {
-  const r = await apiFetch('/api/pybot/stop', 'POST', {});
+  const r = await api('/api/pybot/stop', 'POST', {});
   showToast(r.ok ? 'Bot stopped.' : 'Error stopping bot', r.ok ? 'warn' : 'error');
   loadCampaigns();
 }
 
 async function startBot(campaignId) {
   if (!confirm('Start Puppeteer bot for this campaign? It will run on the server 24/7.')) return;
-  const r = await apiFetch('/api/bot/start', 'POST', { campaign_id: campaignId });
+  const r = await api('/api/bot/start', 'POST', { campaign_id: campaignId });
   if (r.ok) {
     showToast('🤖 Bot started! Running on server 24/7.', 'success');
     loadCampaigns();
@@ -1130,7 +1131,7 @@ async function startBot(campaignId) {
 
 async function stopBot(campaignId) {
   if (!confirm('Stop the running bot?')) return;
-  const r = await apiFetch('/api/bot/stop', 'POST', {});
+  const r = await api('/api/bot/stop', 'POST', {});
   if (r.ok) {
     showToast('Bot stopped.', 'warn');
     loadCampaigns();
