@@ -6,26 +6,11 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
-const { spawn, execSync }  = require('child_process');
 const path     = require('path');
 const fs       = require('fs');
 
-// ── Install Python deps into vendor dir ──────────────────────
-const VENDOR_DIR = path.join(__dirname, 'vendor');
-if (!fs.existsSync(VENDOR_DIR)) fs.mkdirSync(VENDOR_DIR, { recursive: true });
-try {
-  execSync('python3 -c "import sys; sys.path.insert(0,process.env.VENDOR_DIR||"./vendor"); import instagrapi"', { stdio: 'ignore', env: { ...process.env, VENDOR_DIR } });
-  console.log('[InstaReach] Python instagrapi already installed');
-} catch {
-  console.log('[InstaReach] Installing Python dependencies to vendor/...');
-  try {
-    execSync('pip3 install instagrapi==2.1.3 requests Pillow --quiet --target=' + VENDOR_DIR, { stdio: 'inherit', timeout: 180000 });
-    console.log('[InstaReach] Python dependencies installed');
-  } catch(e) {
-    console.warn('[InstaReach] pip3 install failed:', e.message);
-  }
-}
-const https    = require('https');
+// Pure Node.js — no Python needed
+const https = require('https');
 
 const app        = express();
 const PORT       = process.env.PORT || 3001;
@@ -160,29 +145,56 @@ initDb().then(async db => {
   }
 
 
-  // ── Auto-seed account from env vars (survives deploys) ────────
-  const SEED_SESSION    = process.env.SESSION_ID || '';
-  const SEED_ACCOUNT_ID = process.env.ACCOUNT_ID || '';
-  const SEED_IG_USER    = process.env.IG_USERNAME || 'manofox_official';
-  if (SEED_SESSION && SEED_ACCOUNT_ID) {
-    const existingAcc = db.prepare('SELECT id FROM accounts WHERE id = ?').get(SEED_ACCOUNT_ID);
+  // ══════════════════════════════════════════════════════════════
+  // AUTO-SEED: Account + Campaign from env vars on every deploy
+  // These env vars MUST be set in Render → Environment:
+  //   SESSION_ID   = Instagram sessionid cookie value
+  //   ACCOUNT_ID   = any UUID you pick (e.g. 8add8650-31f6-4110-adef-f4364573cf4b)
+  //   IG_USERNAME  = manofox_official
+  //   CAMPAIGN_ID  = any UUID you pick (e.g. cdb10660-e9f7-49e0-b70d-56d0860e9c0c)
+  //   DM_MESSAGE   = Hi {{username}}! ... (your message template)
+  // ══════════════════════════════════════════════════════════════
+  {
+    const S_SESSION  = process.env.SESSION_ID  || '';
+    const S_ACCID    = process.env.ACCOUNT_ID  || 'acc-manofox-001';
+    const S_IGUSER   = process.env.IG_USERNAME || 'manofox_official';
+    const S_CAMPID   = process.env.CAMPAIGN_ID || 'camp-send-001';
+    const S_CAMPNAME = process.env.CAMPAIGN_NAME || 'Send';
+    const S_MESSAGE  = process.env.DM_MESSAGE  || 'Hi {{username}}! I am a real estate consultant in Delhi. Are you looking to buy or sell property? Lets connect!';
+
+    // Always upsert account (even without session — session can be added later)
+    const existingAcc = db.prepare('SELECT id FROM accounts WHERE id=?').get(S_ACCID);
     if (!existingAcc) {
-      db.prepare('INSERT OR IGNORE INTO accounts (id, username, session_id, status, dms_today, dms_total) VALUES (?,?,?,?,?,?)').run(SEED_ACCOUNT_ID, SEED_IG_USER, SEED_SESSION, 'idle', 0, 0);
-      console.log('[InstaReach] Auto-seeded account:', SEED_IG_USER);
+      db.prepare('INSERT OR IGNORE INTO accounts (id,username,session_id,status,dms_today,dms_total) VALUES (?,?,?,?,?,?)').run(S_ACCID, S_IGUSER, S_SESSION, 'idle', 0, 0);
+      console.log('[InstaReach] Auto-seeded account:', S_IGUSER, '| session_len:', S_SESSION.length);
     } else {
-      db.prepare('UPDATE accounts SET session_id=?, username=? WHERE id=?').run(SEED_SESSION, SEED_IG_USER, SEED_ACCOUNT_ID);
-      console.log('[InstaReach] Account session synced:', SEED_IG_USER);
+      // Always update session_id on deploy so fresh cookies take effect
+      db.prepare('UPDATE accounts SET session_id=?, username=? WHERE id=?').run(S_SESSION, S_IGUSER, S_ACCID);
+      console.log('[InstaReach] Account session updated:', S_IGUSER, '| session_len:', S_SESSION.length);
     }
-  }
-  // ── Auto-seed campaign from env vars ─────────────────────────
-  const SEED_CAMPAIGN_ID = process.env.CAMPAIGN_ID || '';
-  const SEED_CAMPAIGN_NAME = process.env.CAMPAIGN_NAME || 'Main Campaign';
-  const SEED_MESSAGE = process.env.DM_MESSAGE || 'Hi {{username}}! I am {{sender}}, a real estate consultant in Delhi. Are you looking to buy or sell property?';
-  if (SEED_CAMPAIGN_ID && SEED_ACCOUNT_ID && SEED_SESSION) {
-    const existingCamp = db.prepare('SELECT id FROM campaigns WHERE id=?').get(SEED_CAMPAIGN_ID);
+
+    // Also seed by username in case account was created differently
+    const accByUser = db.prepare('SELECT id FROM accounts WHERE username=?').get(S_IGUSER);
+    if (accByUser && accByUser.id !== S_ACCID && S_SESSION) {
+      db.prepare('UPDATE accounts SET session_id=? WHERE username=?').run(S_SESSION, S_IGUSER);
+      console.log('[InstaReach] Also updated session for username-matched account');
+    }
+
+    // Upsert campaign
+    const existingCamp = db.prepare('SELECT id FROM campaigns WHERE id=?').get(S_CAMPID);
     if (!existingCamp) {
-      db.prepare('INSERT OR IGNORE INTO campaigns (id,account_id,name,message,status,dms_sent,max_dms,cooldown_ms,location,parent_category,sub_category) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(SEED_CAMPAIGN_ID, SEED_ACCOUNT_ID, SEED_CAMPAIGN_NAME, SEED_MESSAGE, 'stopped', 0, 100, 15000, 'Delhi', 'real_estate', 'Residential');
-      console.log('[InstaReach] Auto-seeded campaign:', SEED_CAMPAIGN_NAME);
+      db.prepare('INSERT OR IGNORE INTO campaigns (id,account_id,name,message,status,dms_sent,max_dms,cooldown_ms,location,parent_category,sub_category) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(S_CAMPID, S_ACCID, S_CAMPNAME, S_MESSAGE, 'stopped', 0, 100, 15000, 'Delhi', 'real_estate', 'Residential');
+      console.log('[InstaReach] Auto-seeded campaign:', S_CAMPNAME);
+    } else {
+      // Update message on every deploy so env var changes apply
+      db.prepare('UPDATE campaigns SET message=?, account_id=?, name=? WHERE id=?').run(S_MESSAGE, S_ACCID, S_CAMPNAME, S_CAMPID);
+      console.log('[InstaReach] Campaign updated:', S_CAMPNAME);
+    }
+
+    if (!S_SESSION) {
+      console.warn('[InstaReach] WARNING: SESSION_ID env var is EMPTY! Bot will not work. Set it in Render → Environment.');
+    } else {
+      console.log('[InstaReach] Session loaded OK, length:', S_SESSION.length);
     }
   }
 
@@ -508,8 +520,10 @@ initDb().then(async db => {
   // Uses same Instagram web API endpoints as the working TM script
   // ══════════════════════════════════════════════════════════════
 
-  // ── HTTP helper: mirrors GM_xmlhttpRequest ────────────────────
-  function igFetch(method, hostname, path, headers, postData) {
+  // ── HTTP helper — plain text responses, no gzip ─────────────
+  const zlib = require('zlib');
+
+  function igFetch(method, hostname, igPath, headers, postData) {
     return new Promise((resolve, reject) => {
       const isPost = method === 'POST';
       const body   = postData
@@ -520,13 +534,13 @@ initDb().then(async db => {
 
       const opts = {
         hostname,
-        path,
+        path: igPath,
         method,
         headers: {
           'User-Agent'      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Accept'          : '*/*',
+          'Accept'          : 'application/json, */*',
           'Accept-Language' : 'en-IN,en;q=0.9',
-          'Accept-Encoding' : 'gzip, deflate, br',
+          'Accept-Encoding' : 'identity',
           'Connection'      : 'keep-alive',
           ...headers,
         },
@@ -540,12 +554,13 @@ initDb().then(async db => {
         const chunks = [];
         res.on('data', d => chunks.push(d));
         res.on('end', () => {
-          const raw = Buffer.concat(chunks).toString();
+          const raw = Buffer.concat(chunks).toString('utf8');
+          console.log('[igFetch]', method, hostname + igPath.slice(0,60), '->', res.statusCode, raw.slice(0,100));
           try { resolve({ status: res.statusCode, body: JSON.parse(raw), raw }); }
           catch { resolve({ status: res.statusCode, body: raw, raw }); }
         });
       });
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+      req.setTimeout(20000, () => { req.destroy(); reject(new Error('Timeout')); });
       req.on('error', reject);
       if (body) req.write(body);
       req.end();
@@ -859,39 +874,68 @@ initDb().then(async db => {
     }
   }
 
-  // ── API endpoints (same interface, dashboard unchanged) ───────
+  // ── API endpoints ─────────────────────────────────────────────
   app.post('/api/pybot/start', auth, (req, res) => {
     console.log('[Bot] /api/pybot/start | body:', JSON.stringify(req.body), '| running:', _botRunning);
 
-    if (_botRunning) return res.status(409).json({ error: 'Bot already running' });
+    if (_botRunning) {
+      return res.status(409).json({ error: 'Bot already running — click Stop Bot first' });
+    }
 
     const { campaign_id, account_id } = req.body;
-    if (!campaign_id || !account_id) return res.status(400).json({ error: 'campaign_id and account_id required' });
 
-    const acc = db.prepare('SELECT * FROM accounts WHERE id=?').get(account_id);
-    if (!acc) return res.status(404).json({ error: 'Account not found: ' + account_id });
+    // Find account — try by id, then by username, then first account
+    let acc = account_id ? db.prepare('SELECT * FROM accounts WHERE id=?').get(account_id) : null;
+    if (!acc) acc = db.prepare('SELECT * FROM accounts WHERE username=?').get(process.env.IG_USERNAME || 'manofox_official');
+    if (!acc) acc = db.prepare('SELECT * FROM accounts ORDER BY created_at LIMIT 1').get();
+    if (!acc) return res.status(404).json({ error: 'No accounts found. Add an account first.' });
 
-    const sessionId = acc.session_id || process.env.SESSION_ID || '';
-    if (!sessionId) return res.status(400).json({ error: 'No session_id on account — set SESSION_ID in Render env' });
+    // Get session — from account row, or env var
+    const sessionId = (acc.session_id && acc.session_id.length > 10)
+      ? acc.session_id
+      : (process.env.SESSION_ID || '');
 
-    const campaign = db.prepare('SELECT * FROM campaigns WHERE id=?').get(campaign_id);
-    if (!campaign) return res.status(404).json({ error: 'Campaign not found: ' + campaign_id });
-    // Use default message if none set
+    if (!sessionId || sessionId.length < 10) {
+      return res.status(400).json({
+        error: 'No Instagram session! Go to Render → Environment → add SESSION_ID = your Instagram sessionid cookie value',
+        account: acc.username,
+        session_len: (sessionId || '').length,
+      });
+    }
 
-    // Auto-stop others, set this one running
+    // Find campaign — try by id, then first campaign
+    let campaign = campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id=?').get(campaign_id) : null;
+    if (!campaign) campaign = db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC LIMIT 1').get();
+    if (!campaign) return res.status(404).json({ error: 'No campaigns found. Create a campaign first.' });
+
+    // Ensure message exists
+    if (!campaign.message || campaign.message.length < 5) {
+      db.prepare('UPDATE campaigns SET message=? WHERE id=?').run(
+        'Hi {{username}}! I am a real estate consultant in Delhi. Are you looking to buy or sell property? Lets connect!',
+        campaign.id
+      );
+      campaign.message = 'Hi {{username}}! I am a real estate consultant in Delhi. Are you looking to buy or sell property? Lets connect!';
+    }
+
+    // Set running
     const now = new Date().toISOString();
-    db.prepare("UPDATE campaigns SET status='stopped',finished_at=? WHERE account_id=? AND id!=? AND status IN ('running','pending')")
-      .run(now, account_id, campaign_id);
+    db.prepare("UPDATE campaigns SET status='stopped',finished_at=? WHERE account_id=? AND id!=? AND status='running'")
+      .run(now, acc.id, campaign.id);
     db.prepare("UPDATE campaigns SET status='running',started_at=? WHERE id=?")
-      .run(now, campaign_id);
+      .run(now, campaign.id);
 
-    console.log('[Bot] Starting for campaign:', campaign.name, '| account:', acc.username);
+    console.log('[Bot] Starting | campaign:', campaign.name, '| account:', acc.username, '| session_len:', sessionId.length);
 
-    // Run in background
-    runBot({ ...campaign, account_username: acc.username }, sessionId)
+    runBot({ ...campaign, account_id: acc.id, account_username: acc.username }, sessionId)
       .catch(e => console.error('[Bot] Uncaught:', e.message));
 
-    res.json({ ok: true, message: 'Bot started! Watch Live Logs tab.' });
+    res.json({
+      ok: true,
+      message: 'Bot started!',
+      campaign: campaign.name,
+      account: acc.username,
+      session_len: sessionId.length,
+    });
   });
 
   app.post('/api/pybot/stop', auth, (req, res) => {
