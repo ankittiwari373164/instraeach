@@ -922,6 +922,64 @@ initDb().then(async db => {
 
 
   // ══════════════════════════════════════════════════════════════
+  // CRON ENDPOINT — called by Render Cron Job or UptimeRobot
+  // GET /api/bot/run?key=YOUR_CRON_KEY
+  // No JWT needed — uses CRON_KEY env var
+  // ══════════════════════════════════════════════════════════════
+
+  app.get('/api/bot/run', async (req, res) => {
+    const CRON_KEY = process.env.CRON_KEY || 'instraeach_cron_2024';
+    if (req.query.key !== CRON_KEY) {
+      return res.status(403).json({ error: 'Wrong key' });
+    }
+
+    if (_botRunning) {
+      return res.json({ ok: true, message: 'Bot already running', skipped: true });
+    }
+
+    // Find first running campaign with an account
+    const campaign = db.prepare(`
+      SELECT c.*, a.session_id, a.username AS account_username, a.id AS acc_id
+      FROM campaigns c
+      JOIN accounts a ON c.account_id = a.id
+      WHERE c.status = 'running'
+      ORDER BY c.created_at DESC LIMIT 1
+    `).get();
+
+    if (!campaign) {
+      // Try any campaign
+      const anyCampaign = db.prepare(`
+        SELECT c.*, a.session_id, a.username AS account_username, a.id AS acc_id
+        FROM campaigns c
+        JOIN accounts a ON c.account_id = a.id
+        ORDER BY c.created_at DESC LIMIT 1
+      `).get();
+
+      if (!anyCampaign) return res.json({ ok: false, message: 'No campaigns found' });
+
+      // Set it running
+      db.prepare("UPDATE campaigns SET status='running', started_at=? WHERE id=?")
+        .run(new Date().toISOString(), anyCampaign.id);
+      anyCampaign.status = 'running';
+
+      const sessionId = anyCampaign.session_id || process.env.SESSION_ID || '';
+      if (!sessionId) return res.json({ ok: false, message: 'No session_id' });
+
+      console.log('[Cron] Starting bot for campaign:', anyCampaign.name);
+      res.json({ ok: true, message: 'Bot started via cron', campaign: anyCampaign.name });
+      runBot({ ...anyCampaign, account_id: anyCampaign.acc_id }, sessionId).catch(e => console.error('[Cron] Error:', e.message));
+      return;
+    }
+
+    const sessionId = campaign.session_id || process.env.SESSION_ID || '';
+    if (!sessionId) return res.json({ ok: false, message: 'No session_id on account' });
+
+    console.log('[Cron] Starting bot for campaign:', campaign.name);
+    res.json({ ok: true, message: 'Bot started via cron', campaign: campaign.name });
+    runBot({ ...campaign, account_id: campaign.acc_id }, sessionId).catch(e => console.error('[Cron] Error:', e.message));
+  });
+
+  // ══════════════════════════════════════════════════════════════
   // STATS
   // ══════════════════════════════════════════════════════════════
 
