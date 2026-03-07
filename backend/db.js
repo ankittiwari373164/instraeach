@@ -10,22 +10,11 @@ let _db        = null;
 let _saveTimer = null;
 
 // Persist to disk with 300ms debounce
-// Uses atomic write (temp file + rename) to avoid Windows file lock issues
 function scheduleSave() {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    try {
-      const data = _db.export();
-      const buf  = Buffer.from(data);
-      const tmp  = DB_PATH + '.tmp';
-      fs.writeFileSync(tmp, buf);
-      // Atomic rename — safe on Windows too
-      if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
-      fs.renameSync(tmp, DB_PATH);
-    } catch(e) {
-      // If rename fails (Windows lock), try direct write
-      try { fs.writeFileSync(DB_PATH, Buffer.from(_db.export())); } catch {}
-    }
+    const data = _db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
   }, 300);
 }
 
@@ -111,22 +100,22 @@ async function initDb() {
       id                TEXT PRIMARY KEY,
       name              TEXT NOT NULL,
       account_id        TEXT NOT NULL,
-      parent_category   TEXT NOT NULL,
+      parent_category   TEXT DEFAULT 'general',
       sub_category      TEXT,
-      location          TEXT NOT NULL,
-      keywords          TEXT NOT NULL,
-      message           TEXT NOT NULL,
+      location          TEXT DEFAULT 'Delhi',
+      keywords          TEXT DEFAULT '[]',
+      message           TEXT DEFAULT '',
       max_dms           INTEGER DEFAULT 100,
+      cooldown_ms       INTEGER DEFAULT 15000,
       scrape_depth      INTEGER DEFAULT 1,
       dm_from_search    INTEGER DEFAULT 1,
       dm_from_followers INTEGER DEFAULT 1,
       skip_private      INTEGER DEFAULT 1,
       skip_dmed         INTEGER DEFAULT 1,
       status            TEXT DEFAULT 'pending',
-      use_ai_enhance    INTEGER DEFAULT 0,
-      image_url         TEXT DEFAULT '',
       dms_sent          INTEGER DEFAULT 0,
       accounts_found    INTEGER DEFAULT 0,
+      image_url         TEXT DEFAULT '',
       created_at        TEXT DEFAULT (datetime('now')),
       started_at        TEXT,
       finished_at       TEXT
@@ -158,28 +147,23 @@ async function initDb() {
     );
   `);
 
-  // ── Migrations: add new columns to existing databases ────────
-  // ALTER TABLE IF NOT EXISTS not supported in sql.js SQLite,
-  // so check PRAGMA table_info first and only ALTER if column is missing.
-  try {
-    const campInfo = _db.exec("PRAGMA table_info(campaigns)");
-    const existingCols = (campInfo[0]?.values || []).map(r => r[1]);
 
-    if (!existingCols.includes('use_ai_enhance')) {
-      _db.run("ALTER TABLE campaigns ADD COLUMN use_ai_enhance INTEGER DEFAULT 0");
-      console.log('[DB] Migration: added use_ai_enhance column to campaigns');
-    }
-    if (!existingCols.includes('image_url')) {
-      _db.run("ALTER TABLE campaigns ADD COLUMN image_url TEXT DEFAULT ''");
-      console.log('[DB] Migration: added image_url column to campaigns');
-    }
-  } catch(migErr) {
-    console.log('[DB] Migration warning:', migErr.message);
+  // ── Migrate existing DBs — add missing columns safely ────────
+  const migrations = [
+    "ALTER TABLE campaigns ADD COLUMN cooldown_ms INTEGER DEFAULT 15000",
+    "ALTER TABLE campaigns ADD COLUMN image_url TEXT DEFAULT ''",
+    "ALTER TABLE campaigns ADD COLUMN parent_category TEXT DEFAULT 'general'",
+    "ALTER TABLE campaigns ADD COLUMN location TEXT DEFAULT 'Delhi'",
+    "ALTER TABLE campaigns ADD COLUMN keywords TEXT DEFAULT '[]'",
+    "ALTER TABLE campaigns ADD COLUMN message TEXT DEFAULT ''",
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch(_) { /* column already exists */ }
   }
 
-  // Save schema to disk immediately on first run
+  // Save schema
   fs.writeFileSync(DB_PATH, Buffer.from(_db.export()));
-  console.log('[DB] SQLite (sql.js) ready at', require('path').resolve(DB_PATH));
+  console.log('[DB] SQLite (sql.js) ready at', DB_PATH);
   return db;
 }
 
