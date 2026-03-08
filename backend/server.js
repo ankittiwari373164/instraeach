@@ -521,13 +521,27 @@ initDb().then(async db => {
 
   const { spawn, execSync } = require('child_process');
 
-  // Install instagrapi on startup
-  try {
-    execSync('pip3 install instagrapi requests --quiet', { timeout: 120000, stdio: 'ignore' });
-    console.log('[InstaReach] instagrapi ready');
-  } catch(e) {
-    console.warn('[InstaReach] pip install warning:', e.message.slice(0,80));
+  // Install instagrapi on startup — try multiple pip commands
+  const pipCmds = [
+    'pip3 install instagrapi requests --quiet --break-system-packages',
+    'pip3 install instagrapi requests --quiet',
+    'pip install instagrapi requests --quiet --break-system-packages',
+    'pip install instagrapi requests --quiet',
+    'python3 -m pip install instagrapi requests --quiet --break-system-packages',
+    'python3 -m pip install instagrapi requests --quiet',
+  ];
+  let pipOk = false;
+  for (const cmd of pipCmds) {
+    try {
+      execSync(cmd, { timeout: 180000, stdio: 'pipe' });
+      console.log('[InstaReach] instagrapi installed via:', cmd.split(' ').slice(0,3).join(' '));
+      pipOk = true;
+      break;
+    } catch(e) {
+      console.log('[InstaReach] pip attempt failed:', cmd.slice(0,40), '-', e.message.slice(0,60));
+    }
   }
+  if (!pipOk) console.warn('[InstaReach] WARNING: Could not install instagrapi — bot may not work');
 
   let _botProcess  = null;
   let _botRunning  = false;

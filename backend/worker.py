@@ -19,7 +19,19 @@ try:
 except ImportError:
     log("Installing instagrapi...", "warn")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "instagrapi", "--quiet"])
+    cmds = [
+        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet", "--break-system-packages"],
+        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet"],
+        ["pip3", "install", "instagrapi", "requests", "--quiet", "--break-system-packages"],
+        ["pip3", "install", "instagrapi", "requests", "--quiet"],
+    ]
+    for cmd in cmds:
+        try:
+            subprocess.check_call(cmd, timeout=180)
+            log(f"Installed via: {' '.join(cmd[:4])}")
+            break
+        except Exception as e:
+            log(f"pip attempt failed: {e}", "warn")
     from instagrapi import Client
     from instagrapi.exceptions import LoginRequired, ChallengeRequired, TwoFactorRequired, UserNotFound
     log("instagrapi installed")
