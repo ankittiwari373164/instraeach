@@ -319,4 +319,359 @@ def main():
     log(f"Tip: Run again in 2-3 hours for next batch")
 
 if __name__ == "__main__":
+    main()"""
+InstaReach Worker — Human-like Instagram DM Bot v2
+Fixes: Groq model, session re-login, processed persistence
+"""
+
+import sys, os, json, time, random, requests
+from datetime import datetime
+
+def log(msg, level="info"):
+    ts = datetime.now().strftime("%H:%M:%S")
+    prefix = {"info":"P","success":"OK","error":"ERR","warn":"WARN"}.get(level,"P")
+    print(f"[{ts}] {prefix} {msg}", flush=True)
+
+try:
+    from instagrapi import Client
+    from instagrapi.exceptions import (
+        LoginRequired, ChallengeRequired, TwoFactorRequired,
+        UserNotFound, ClientError, RateLimitError
+    )
+    log("instagrapi ready")
+except ImportError:
+    log("Installing instagrapi...", "warn")
+    import subprocess
+    for cmd in [
+        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet", "--break-system-packages"],
+        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet"],
+    ]:
+        try: subprocess.check_call(cmd, timeout=180); break
+        except: pass
+    from instagrapi import Client
+    from instagrapi.exceptions import (
+        LoginRequired, ChallengeRequired, TwoFactorRequired,
+        UserNotFound, ClientError, RateLimitError
+    )
+    log("instagrapi installed")
+
+# ── Config ─────────────────────────────────────────────────────
+IG_USERNAME   = os.environ.get("IG_USERNAME", "")
+IG_PASSWORD   = os.environ.get("IG_PASSWORD", "")
+SESSION_FILE  = os.environ.get("SESSION_FILE", "./data/ig_session.json")
+CAMPAIGN_JSON = os.environ.get("CAMPAIGN_DATA", "{}")
+GROQ_KEY      = os.environ.get("GROQ_API_KEY", "")
+
+if not IG_USERNAME or not IG_PASSWORD:
+    log("ERROR: IG_USERNAME and IG_PASSWORD required!", "error")
+    sys.exit(1)
+
+try:
+    campaign = json.loads(CAMPAIGN_JSON)
+except:
+    campaign = {}
+
+CAMPAIGN_NAME = campaign.get("name", "Campaign")
+ACCOUNT_ID    = campaign.get("account_id", "default")
+MESSAGE_TPL   = campaign.get("message", "Hi {{username}}! I am a digital marketing consultant. We help businesses grow online. Interested? Lets connect!")
+MAX_DMS       = min(int(campaign.get("max_dms", 25)), 25)  # 25/session max
+try:
+    kw_raw = campaign.get("keywords", "[]")
+    KEYWORDS = json.loads(kw_raw) if isinstance(kw_raw, str) else (kw_raw or [])
+except:
+    KEYWORDS = []
+
+EXTRA_KEYWORDS = [
+    "real estate agent delhi", "property dealer delhi",
+    "delhi property", "realestate delhi",
+    "homes delhi", "flats delhi",
+    "property consultant delhi", "real estate broker delhi",
+]
+ALL_KEYWORDS = list(dict.fromkeys(KEYWORDS + EXTRA_KEYWORDS))
+
+PROCESSED_FILE = f"./data/processed_{ACCOUNT_ID[:8]}.json"
+
+# ── Groq AI — working models list ─────────────────────────────
+GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "llama-3.3-70b-versatile",
+    "gemma2-9b-it",
+]
+GROQ_STYLES = [
+    "casual and friendly", "professional and concise",
+    "curious and engaging", "warm and personal", "brief and direct"
+]
+
+def groq_enhance(base_msg, username):
+    if not GROQ_KEY:
+        return base_msg.replace("{{username}}", f"@{username}").replace("{{sender}}", f"@{IG_USERNAME}")
+    for model in GROQ_MODELS:
+        try:
+            style = random.choice(GROQ_STYLES)
+            prompt = f"Rewrite this Instagram DM in a {style} tone. Max 180 chars. Replace {{{{username}}}} with @{username}. Original: {base_msg}\nReturn ONLY the rewritten message, nothing else."
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 150},
+                timeout=12
+            )
+            data = resp.json()
+            if "choices" in data and data["choices"]:
+                result = data["choices"][0]["message"]["content"].strip()
+                if len(result) >= 20:
+                    log(f"AI [{model.split('-')[0]}] ({style[:12]}): {result[:70]}")
+                    return result
+            else:
+                err = data.get("error", {}).get("message", "")
+                if "decommissioned" in err or "not found" in err.lower():
+                    log(f"Model {model} unavailable, trying next...", "warn")
+                    continue
+                log(f"Groq error: {err[:80]}", "warn")
+                break
+        except Exception as e:
+            log(f"Groq exception: {e}", "warn")
+            break
+    return base_msg.replace("{{username}}", f"@{username}").replace("{{sender}}", f"@{IG_USERNAME}")
+
+# ── Human sleep ────────────────────────────────────────────────
+def human_sleep(min_s, max_s, label=""):
+    t = random.uniform(min_s, max_s)
+    if random.random() < 0.12:
+        extra = random.uniform(8, 20)
+        t += extra
+    if label:
+        log(f"Waiting {t:.0f}s {label}")
+    time.sleep(t)
+
+# ── Processed persistence ──────────────────────────────────────
+def load_processed():
+    os.makedirs("./data", exist_ok=True)
+    try:
+        if os.path.exists(PROCESSED_FILE):
+            with open(PROCESSED_FILE) as f:
+                data = json.load(f)
+                log(f"Loaded {len(data)} processed accounts from disk")
+                return set(data)
+    except Exception as e:
+        log(f"Could not load processed: {e}", "warn")
+    return set()
+
+def save_processed(s):
+    try:
+        os.makedirs("./data", exist_ok=True)
+        with open(PROCESSED_FILE, "w") as f:
+            json.dump(list(s), f)
+    except Exception as e:
+        log(f"Could not save processed: {e}", "warn")
+
+# ── Login / re-login ───────────────────────────────────────────
+def make_client():
+    cl = Client()
+    cl.set_device({
+        "app_version": "269.0.0.18.75",
+        "android_version": 28,
+        "android_release": "9.0.0",
+        "dpi": "420dpi",
+        "resolution": "1080x2220",
+        "manufacturer": "samsung",
+        "device": "SM-G960F",
+        "model": "Samsung Galaxy S9",
+        "cpu": "exynos9810",
+        "version_code": "314665256",
+    })
+    cl.set_locale("en_IN")
+    cl.set_timezone_offset(19800)
+    cl.delay_range = [3, 8]
+    return cl
+
+def get_client():
+    cl = make_client()
+    os.makedirs("./data", exist_ok=True)
+
+    # Try saved session
+    if os.path.exists(SESSION_FILE):
+        log("Loading saved session...")
+        try:
+            cl.load_settings(SESSION_FILE)
+            cl.login(IG_USERNAME, IG_PASSWORD)
+            info = cl.account_info()
+            log(f"Session restored: @{info.username}", "success")
+            return cl
+        except Exception as e:
+            log(f"Session invalid ({e}), fresh login...", "warn")
+            try: os.remove(SESSION_FILE)
+            except: pass
+
+    return fresh_login()
+
+def fresh_login():
+    cl = make_client()
+    log(f"Fresh login as @{IG_USERNAME}...")
+    time.sleep(random.uniform(3, 7))
+    try:
+        cl.login(IG_USERNAME, IG_PASSWORD)
+        cl.dump_settings(SESSION_FILE)
+        info = cl.account_info()
+        log(f"Logged in: @{info.username}", "success")
+        time.sleep(random.uniform(4, 10))
+        return cl
+    except TwoFactorRequired:
+        log("2FA required — disable 2FA on Instagram", "error")
+        sys.exit(1)
+    except ChallengeRequired:
+        log("Challenge required — open Instagram app and approve login, then retry in 10 mins", "error")
+        sys.exit(1)
+    except Exception as e:
+        log(f"Login failed: {e}", "error")
+        sys.exit(1)
+
+def relogin(cl):
+    """Re-login when session expires mid-run"""
+    log("Session expired mid-run — re-logging in...", "warn")
+    try:
+        if os.path.exists(SESSION_FILE):
+            os.remove(SESSION_FILE)
+        new_cl = fresh_login()
+        return new_cl
+    except Exception as e:
+        log(f"Re-login failed: {e}", "error")
+        return None
+
+# ── Search ─────────────────────────────────────────────────────
+def search_users(cl, keyword, limit=12):
+    try:
+        try:
+            results = cl.search_users(keyword)
+        except TypeError:
+            results = cl.search_users(keyword, count=limit)
+        return [u.username for u in results[:limit] if u.username]
+    except RateLimitError:
+        log("Rate limited on search — waiting 5 min...", "warn")
+        time.sleep(300)
+        return []
+    except Exception as e:
+        log(f'Search "{keyword}": {e}', "warn")
+        return []
+
+# ── Send DM ────────────────────────────────────────────────────
+def send_dm(cl, username, message):
+    try:
+        try:
+            cl.user_info_by_username(username)
+            time.sleep(random.uniform(2, 4))
+        except: pass
+
+        user_id = cl.user_id_from_username(username)
+        time.sleep(random.uniform(1, 3))
+        cl.direct_send(message, user_ids=[user_id])
+        return "sent"
+    except UserNotFound:
+        log(f"Not found: @{username}", "warn")
+        return "skip"
+    except RateLimitError:
+        log("Rate limited on DM — waiting 10 min...", "warn")
+        time.sleep(600)
+        return "fail"
+    except LoginRequired:
+        return "relogin"
+    except ChallengeRequired:
+        log(f"Challenge @{username} — skipping", "warn")
+        return "skip"
+    except Exception as e:
+        err = str(e)
+        if "login_required" in err.lower() or "LoginRequired" in err:
+            return "relogin"
+        if "challenge" in err.lower():
+            log(f"Challenge @{username} — skipping", "warn")
+            return "skip"
+        log(f"DM error @{username}: {err[:100]}", "warn")
+        return "fail"
+
+# ── Main ───────────────────────────────────────────────────────
+def main():
+    log(f"=== Bot starting: {CAMPAIGN_NAME} ===")
+    log(f"Account: @{IG_USERNAME} | Max DMs: {MAX_DMS}/session")
+
+    cl = get_client()
+    processed = load_processed()
+    log(f"Already DMed: {len(processed)} (will skip)")
+
+    # Search
+    log("Searching targets...")
+    targets = []
+    for i, kw in enumerate(ALL_KEYWORDS):
+        found = search_users(cl, kw)
+        fresh = [u for u in found if u not in processed and u not in targets and u != IG_USERNAME]
+        if fresh:
+            log(f'"{kw}" -> {len(fresh)} new')
+        targets.extend(fresh)
+        if i % 3 == 2:
+            human_sleep(8, 15, "(batch pause)")
+        else:
+            human_sleep(3, 7)
+        if len(targets) >= 60:
+            break
+
+    log(f"Total targets: {len(targets)}")
+    if not targets:
+        log("No new targets found — all already DMed", "warn")
+        return
+
+    random.shuffle(targets)
+    log(f"Starting DMs (max {MAX_DMS})...")
+    dm_count = 0
+    consecutive_fails = 0
+
+    for username in targets:
+        if dm_count >= MAX_DMS:
+            log(f"Session limit reached: {MAX_DMS} DMs. Run again in 2-3 hours.", "warn")
+            break
+        if username in processed:
+            continue
+        if consecutive_fails >= 3:
+            log("3 consecutive failures — pausing 10 min...", "warn")
+            time.sleep(600)
+            consecutive_fails = 0
+
+        base_msg = MESSAGE_TPL.replace("{{username}}", f"@{username}").replace("{{sender}}", f"@{IG_USERNAME}")
+        final_msg = groq_enhance(base_msg, username)
+
+        log(f"Sending DM to @{username}...")
+        result = send_dm(cl, username, final_msg)
+
+        if result == "relogin":
+            log("Session expired — re-logging in...", "warn")
+            cl = relogin(cl)
+            if not cl:
+                log("Re-login failed — stopping", "error")
+                break
+            # Retry this user
+            result = send_dm(cl, username, final_msg)
+
+        if result == "sent":
+            dm_count += 1
+            consecutive_fails = 0
+            processed.add(username)
+            save_processed(processed)
+            log(f"DM sent -> @{username} ({dm_count}/{MAX_DMS})", "success")
+            human_sleep(45, 110, "before next DM")
+            if dm_count % 5 == 0:
+                pause = random.uniform(120, 240)
+                log(f"Break after {dm_count} DMs ({pause:.0f}s)...")
+                time.sleep(pause)
+        elif result == "skip":
+            processed.add(username)
+            save_processed(processed)
+            human_sleep(3, 8)
+        else:
+            consecutive_fails += 1
+            log(f"Failed @{username} (#{consecutive_fails})", "warn")
+            human_sleep(15, 35)
+
+    log(f"=== Done! {dm_count} DMs sent ===", "success")
+    log(f"Total processed so far: {len(processed)}")
+    log("Run again in 2-3 hours for next batch")
+
+if __name__ == "__main__":
     main()
