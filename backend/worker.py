@@ -118,6 +118,22 @@ def get_client():
 
     log(f"Logging in as @{IG_USERNAME}...")
     try:
+        # Set device settings to look like a real phone
+        cl.set_device({
+            "app_version": "269.0.0.18.75",
+            "android_version": 26,
+            "android_release": "8.0.0",
+            "dpi": "480dpi",
+            "resolution": "1080x1920",
+            "manufacturer": "OnePlus",
+            "device": "ONEPLUS A3003",
+            "model": "OnePlus3",
+            "cpu": "qcom",
+            "version_code": "314665256",
+        })
+        cl.set_locale("en_IN")
+        cl.set_timezone_offset(19800)  # IST +5:30
+
         cl.login(IG_USERNAME, IG_PASSWORD)
         cl.dump_settings(SESSION_FILE)
         info = cl.account_info()
@@ -126,9 +142,20 @@ def get_client():
     except TwoFactorRequired:
         log("2FA required — disable 2FA on Instagram and retry", "error")
         sys.exit(1)
-    except ChallengeRequired:
-        log("Instagram challenge required — open Instagram app, verify, then retry", "error")
-        sys.exit(1)
+    except ChallengeRequired as e:
+        log(f"Instagram challenge — go to Instagram app on your phone and approve the login, then run the bot again", "error")
+        log(f"Challenge details: {e}", "warn")
+        # Try to resolve challenge automatically
+        try:
+            log("Attempting auto challenge resolve...", "warn")
+            cl.challenge_resolve(cl.last_json)
+            cl.dump_settings(SESSION_FILE)
+            info = cl.account_info()
+            log(f"Challenge resolved! Logged in: @{info.username}", "success")
+            return cl
+        except Exception as e2:
+            log(f"Auto-resolve failed: {e2} — please approve manually in Instagram app", "error")
+            sys.exit(1)
     except Exception as e:
         log(f"Login failed: {e}", "error")
         sys.exit(1)
