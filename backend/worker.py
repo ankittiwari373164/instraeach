@@ -179,10 +179,27 @@ def save_processed(s):
 # Search
 def search_users(cl, keyword, limit=15):
     try:
-        results = cl.search_users(keyword, count=limit)
-        return [u.username for u in results if u.username]
+        # Newer instagrapi removed count param — try without it first
+        try:
+            results = cl.search_users(keyword)
+        except TypeError:
+            results = cl.search_users(keyword, count=limit)
+        return [u.username for u in results[:limit] if u.username]
     except Exception as e:
         log(f'Search "{keyword}": {e}', "warn")
+        # Fallback: use hashtag search
+        try:
+            users = []
+            tag = keyword.replace(" ", "")
+            medias = cl.hashtag_medias_recent(tag, amount=20)
+            for m in medias:
+                if hasattr(m, 'user') and m.user and m.user.username:
+                    users.append(m.user.username)
+            if users:
+                log(f'Hashtag fallback "{tag}" -> {len(users)} users')
+            return list(set(users))[:limit]
+        except Exception as e2:
+            log(f'Hashtag fallback also failed: {e2}', "warn")
         return []
 
 # Send DM
