@@ -330,6 +330,15 @@ def get_client():
     cl = make_client()
     os.makedirs("./data", exist_ok=True)
 
+    # Delete corrupted session file (empty/HTML response = bad session)
+    if os.path.exists(SESSION_FILE):
+        try:
+            size = os.path.getsize(SESSION_FILE)
+            if size < 100:  # too small to be valid
+                log("Session file corrupted (too small) - deleting...", "warn")
+                os.remove(SESSION_FILE)
+        except: pass
+
     if os.path.exists(SESSION_FILE):
         log("Loading saved session...")
         try:
@@ -339,27 +348,45 @@ def get_client():
             log(f"Session restored: @{info.username}", "success")
             return cl
         except Exception as e:
-            log(f"Session invalid ({e}) - fresh login...", "warn")
+            log(f"Session invalid ({e}) - deleting and retrying...", "warn")
             try: os.remove(SESSION_FILE)
             except: pass
 
-    log(f"Fresh login as @{IG_USERNAME}...")
-    time.sleep(random.uniform(3, 7))
-    try:
-        cl.login(IG_USERNAME, IG_PASSWORD)
-        cl.dump_settings(SESSION_FILE)
-        info = cl.account_info()
-        log(f"Logged in: @{info.username}", "success")
-        return cl
-    except TwoFactorRequired:
-        log("2FA required - disable 2FA on Instagram", "error")
-        sys.exit(1)
-    except ChallengeRequired:
-        log("Challenge required - approve in Instagram app, retry in 10 mins", "error")
-        sys.exit(1)
-    except Exception as e:
-        log(f"Login failed: {e}", "error")
-        sys.exit(1)
+    # Fresh login with retry (Instagram sometimes returns empty on first attempt)
+    last_err = None
+    for attempt in range(1, 4):
+        log(f"Fresh login as @{IG_USERNAME} (attempt {attempt}/3)...")
+        wait = random.uniform(3, 7) * attempt
+        time.sleep(wait)
+        try:
+            cl2 = make_client()  # fresh client each attempt
+            cl2.login(IG_USERNAME, IG_PASSWORD)
+            cl2.dump_settings(SESSION_FILE)
+            info = cl2.account_info()
+            log(f"Logged in: @{info.username}", "success")
+            return cl2
+        except TwoFactorRequired:
+            log("2FA required - disable 2FA on Instagram", "error")
+            sys.exit(1)
+        except ChallengeRequired:
+            log("Challenge required - approve in Instagram app, retry in 10 mins", "error")
+            sys.exit(1)
+        except Exception as e:
+            last_err = str(e)
+            log(f"Login attempt {attempt} failed: {last_err[:80]}", "warn")
+            if "Expecting value" in last_err or "JSONDecodeError" in last_err:
+                log("Instagram returned empty response - IP may be temporarily rate limited", "warn")
+                log(f"Waiting 3 minutes before retry...", "warn")
+                time.sleep(180)
+            elif "checkpoint" in last_err.lower() or "challenge" in last_err.lower():
+                log("Challenge required - approve in Instagram app, retry in 10 mins", "error")
+                sys.exit(1)
+            else:
+                time.sleep(30 * attempt)
+
+    log(f"All login attempts failed: {last_err}", "error")
+    log("Possible causes: wrong password, account locked, IP blocked by Instagram", "error")
+    sys.exit(1)
 
 def relogin(cl):
     log("Session expired - reconnecting...", "warn")

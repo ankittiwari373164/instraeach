@@ -607,6 +607,12 @@ initDb().then(async db => {
                     : line.includes('] WARN') ? 'warn' : 'info';
         const msg = line.replace(/^\[\d{2}:\d{2}:\d{2}\] [A-Z]+ /, '');
         botLog(msg, level, account_id, campaign.id);
+        // Update DM counter in DB when worker confirms a DM was sent
+        if (line.includes('DM sent ->')) {
+          try {
+            db.prepare('UPDATE campaigns SET dms_sent = COALESCE(dms_sent,0) + 1 WHERE id=?').run(campaign.id);
+          } catch(e) {}
+        }
       });
     });
 
@@ -690,6 +696,21 @@ initDb().then(async db => {
 
   app.get('/api/pybot/logs', auth, (req, res) => {
     res.json(global._pyLogs || []);
+  });
+
+  // Clear session file (call when login fails with empty response)
+  app.post('/api/pybot/clear-session', auth, (req, res) => {
+    const sessionFile = './data/ig_session.json';
+    try {
+      if (require('fs').existsSync(sessionFile)) {
+        require('fs').unlinkSync(sessionFile);
+        res.json({ ok: true, message: 'Session cleared - next Run Bot will do a fresh login' });
+      } else {
+        res.json({ ok: true, message: 'No session file found (already clear)' });
+      }
+    } catch(e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.get('/api/bot/debug', auth, (req, res) => {
