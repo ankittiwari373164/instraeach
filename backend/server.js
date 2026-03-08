@@ -516,187 +516,28 @@ initDb().then(async db => {
 
 
   // ══════════════════════════════════════════════════════════════
-  // BOT CONTROL — Exact port of Tampermonkey script logic
-  // Uses same Instagram web API endpoints as the working TM script
+  // BOT CONTROL — Python worker (instagrapi username+password login)
   // ══════════════════════════════════════════════════════════════
 
-  // ── HTTP helper — plain text responses, no gzip ─────────────
-  const zlib = require('zlib');
+  const { spawn, execSync } = require('child_process');
 
-  function igFetch(method, hostname, igPath, headers, postData) {
-    return new Promise((resolve, reject) => {
-      const isPost = method === 'POST';
-      const body   = postData
-        ? Object.entries(postData)
-            .map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
-            .join('&')
-        : null;
-
-      const opts = {
-        hostname,
-        path: igPath,
-        method,
-        headers: {
-          'User-Agent'      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Accept'          : 'application/json, */*',
-          'Accept-Language' : 'en-IN,en;q=0.9',
-          'Accept-Encoding' : 'identity',
-          'Connection'      : 'keep-alive',
-          ...headers,
-        },
-      };
-      if (isPost && body) {
-        opts.headers['Content-Type']   = 'application/x-www-form-urlencoded';
-        opts.headers['Content-Length'] = Buffer.byteLength(body);
-      }
-
-      const req = https.request(opts, res => {
-        const chunks = [];
-        res.on('data', d => chunks.push(d));
-        res.on('end', () => {
-          const raw = Buffer.concat(chunks).toString('utf8');
-          console.log('[igFetch]', method, hostname + igPath.slice(0,60), '->', res.statusCode, raw.slice(0,100));
-          try { resolve({ status: res.statusCode, body: JSON.parse(raw), raw }); }
-          catch { resolve({ status: res.statusCode, body: raw, raw }); }
-        });
-      });
-      req.setTimeout(20000, () => { req.destroy(); reject(new Error('Timeout')); });
-      req.on('error', reject);
-      if (body) req.write(body);
-      req.end();
-    });
+  // Install instagrapi on startup
+  try {
+    execSync('pip3 install instagrapi requests --quiet', { timeout: 120000, stdio: 'ignore' });
+    console.log('[InstaReach] instagrapi ready');
+  } catch(e) {
+    console.warn('[InstaReach] pip install warning:', e.message.slice(0,80));
   }
 
-  // ── Same as Tampermonkey: searchAccounts() ─────────────────────
-  // TM uses: GET /api/v1/web/search/topsearch/?context=blended&query=...
-  // with headers: x-ig-app-id, x-csrftoken, x-requested-with
-  // We replicate the same request from Node.js
-  async function botSearchAccounts(sessionId, csrfToken, keyword) {
-    try {
-      const q = keyword.replace(/^#/, '');
-      const r = await igFetch('GET', 'www.instagram.com',
-        '/api/v1/web/search/topsearch/?context=blended&query=' + encodeURIComponent(q) + '&include_reel=false',
-        {
-          'x-ig-app-id'      : '936619743392459',
-          'x-csrftoken'      : csrfToken,
-          'x-requested-with' : 'XMLHttpRequest',
-          'Referer'          : 'https://www.instagram.com/direct/inbox/',
-          'Cookie'           : 'sessionid=' + sessionId + '; csrftoken=' + csrfToken,
-        }
-      );
-      if (r.status === 401 || r.status === 403) throw new Error('Session expired (' + r.status + ')');
-      if (r.body && r.body.users) {
-        return r.body.users.map(u => u.user && u.user.username).filter(Boolean);
-      }
-    } catch(e) {
-      console.log('[Bot] Search error for "' + keyword + '":', e.message);
-    }
-    return [];
-  }
-
-  // ── Get CSRF token from a lightweight IG page ─────────────────
-  async function botGetCsrf(sessionId) {
-    try {
-      const r = await igFetch('GET', 'www.instagram.com', '/', {
-        'Cookie'  : 'sessionid=' + sessionId,
-        'Referer' : 'https://www.instagram.com/',
-      });
-      // Extract csrftoken from Set-Cookie or response body
-      const match = r.raw.match(/csrftoken[=\s"':]+([a-zA-Z0-9_-]{20,})/);
-      if (match) return match[1];
-    } catch(e) { console.log('[Bot] CSRF fetch error:', e.message); }
-    return 'missing';
-  }
-
-  // ── Get user PK (ID) — same endpoint TM uses internally ───────
-  async function botGetUserId(sessionId, csrfToken, username) {
-    try {
-      const r = await igFetch('GET', 'www.instagram.com',
-        '/api/v1/users/web_profile_info/?username=' + encodeURIComponent(username),
-        {
-          'x-ig-app-id'      : '936619743392459',
-          'x-csrftoken'      : csrfToken,
-          'x-requested-with' : 'XMLHttpRequest',
-          'Referer'          : 'https://www.instagram.com/' + username + '/',
-          'Cookie'           : 'sessionid=' + sessionId + '; csrftoken=' + csrfToken,
-        }
-      );
-      const uid = r.body?.data?.user?.id;
-      if (uid) return String(uid);
-    } catch {}
-    // Fallback
-    try {
-      const r2 = await igFetch('GET', 'i.instagram.com',
-        '/api/v1/users/' + username + '/usernameinfo/',
-        {
-          'x-ig-app-id' : '567067343352427',
-          'Cookie'      : 'sessionid=' + sessionId + '; csrftoken=' + csrfToken,
-        }
-      );
-      const uid2 = r2.body?.user?.pk || r2.body?.user?.id;
-      if (uid2) return String(uid2);
-    } catch {}
-    return null;
-  }
-
-  // ── Send DM via Instagram direct API ─────────────────────────
-  async function botSendDM(sessionId, csrfToken, userId, message) {
-    try {
-      const r = await igFetch('POST', 'www.instagram.com',
-        '/api/v1/direct_v2/threads/broadcast/text/',
-        {
-          'x-ig-app-id'      : '936619743392459',
-          'x-csrftoken'      : csrfToken,
-          'x-requested-with' : 'XMLHttpRequest',
-          'Origin'           : 'https://www.instagram.com',
-          'Referer'          : 'https://www.instagram.com/direct/inbox/',
-          'Cookie'           : 'sessionid=' + sessionId + '; csrftoken=' + csrfToken,
-        },
-        {
-          recipient_users : '[[' + userId + ']]',
-          client_context  : Date.now().toString(),
-          thread_ids      : '[]',
-          text            : message,
-        }
-      );
-      console.log('[Bot] DM result:', r.status, JSON.stringify(r.body).slice(0, 120));
-      return r.status === 200;
-    } catch(e) {
-      console.log('[Bot] DM send error:', e.message);
-      return false;
-    }
-  }
-
-  // ── Verify session is valid ────────────────────────────────────
-  async function botVerifySession(sessionId, csrfToken) {
-    try {
-      const r = await igFetch('GET', 'www.instagram.com',
-        '/api/v1/accounts/current_user/?edit=true',
-        {
-          'x-ig-app-id'      : '936619743392459',
-          'x-csrftoken'      : csrfToken,
-          'x-requested-with' : 'XMLHttpRequest',
-          'Cookie'           : 'sessionid=' + sessionId + '; csrftoken=' + csrfToken,
-        }
-      );
-      const user = r.body?.user;
-      if (user) return user.username || 'ok';
-      if (r.status === 401 || r.status === 403) return null;
-    } catch {}
-    return null;
-  }
-
-  // ── Bot state ─────────────────────────────────────────────────
+  let _botProcess  = null;
   let _botRunning  = false;
   let _botStop     = false;
   let _botCampaign = null;
 
   function botLog(msg, level, account_id, campaign_id, username) {
-    const ts = new Date().toISOString();
-    const prefix = level === 'error' ? 'ERR: ' : level === 'success' ? 'OK: ' : level === 'warn' ? 'WARN: ' : '';
     console.log('[Bot]', level ? level.toUpperCase() : 'INFO', msg);
     if (!global._pyLogs) global._pyLogs = [];
-    global._pyLogs.push({ ts, msg: prefix + msg });
+    global._pyLogs.push({ ts: new Date().toISOString(), msg });
     if (global._pyLogs.length > 500) global._pyLogs.shift();
     try {
       db.prepare('INSERT INTO logs (account_id,campaign_id,level,message,username) VALUES (?,?,?,?,?)')
@@ -704,266 +545,151 @@ initDb().then(async db => {
     } catch {}
   }
 
-  const botSleep = (ms, j) => new Promise(r => setTimeout(r, ms + Math.floor(Math.random() * (j || 1))));
-  const botRnd   = (a, b)  => a + Math.floor(Math.random() * (b - a));
-
-  async function runBot(campaign, sessionId) {
+  function runBot(campaign, account_id) {
+    if (_botRunning) return;
     _botRunning  = true;
     _botStop     = false;
     _botCampaign = campaign.id;
 
-    const account_id  = campaign.account_id;
-    const campaign_id = campaign.id;
-    const L = (m, lv, u) => botLog(m, lv || 'info', account_id, campaign_id, u);
+    const igUser = process.env.IG_USERNAME || '';
+    const igPass = process.env.IG_PASSWORD || '';
 
-    L('=== Bot starting: ' + campaign.name + ' ===');
-    L('Getting CSRF token...');
+    if (!igPass) {
+      botLog('ERROR: IG_PASSWORD env var not set! Go to Render → Environment → add IG_PASSWORD', 'error', account_id, campaign.id);
+      _botRunning = false;
+      _botCampaign = null;
+      return;
+    }
 
-    try {
-      // Step 1: Get CSRF token (same as TM getCsrf())
-      const csrfToken = await botGetCsrf(sessionId);
-      L('CSRF: ' + csrfToken.slice(0, 10) + '...');
+    const campData = JSON.stringify({
+      id         : campaign.id,
+      name       : campaign.name,
+      account_id : account_id,
+      message    : campaign.message || 'Hi {{username}}! I am a real estate consultant in Delhi. Interested in buying or selling? Lets connect!',
+      max_dms    : campaign.max_dms || 50,
+      cooldown_ms: campaign.cooldown_ms || 15000,
+      keywords   : campaign.keywords || '[]',
+    });
 
-      // Step 2: Verify session (same as TM checkCampaignRunning start)
-      const igUser = await botVerifySession(sessionId, csrfToken);
-      if (!igUser) {
-        L('Session EXPIRED or INVALID! Go to Instagram, copy new sessionid cookie, update in Render env vars', 'error');
-        return;
+    const workerPath = require('path').join(__dirname, 'worker.py');
+    const env = {
+      ...process.env,
+      IG_USERNAME   : igUser,
+      IG_PASSWORD   : igPass,
+      CAMPAIGN_DATA : campData,
+      SESSION_FILE  : './data/ig_session.json',
+    };
+
+    botLog(`=== Bot starting: ${campaign.name} ===`, 'info', account_id, campaign.id);
+    botLog(`Account: @${igUser} | Max DMs: ${campaign.max_dms || 50}`, 'info', account_id, campaign.id);
+
+    _botProcess = spawn('python3', [workerPath], { env, cwd: __dirname });
+
+    _botProcess.stdout.on('data', data => {
+      const lines = data.toString().split('\n').filter(l => l.trim());
+      lines.forEach(line => {
+        const level = line.includes('] OK ') ? 'success'
+                    : line.includes('] ERR') ? 'error'
+                    : line.includes('] WARN') ? 'warn' : 'info';
+        const msg = line.replace(/^\[\d{2}:\d{2}:\d{2}\] [A-Z]+ /, '');
+        botLog(msg, level, account_id, campaign.id);
+      });
+    });
+
+    _botProcess.stderr.on('data', data => {
+      const txt = data.toString().trim();
+      if (txt && !txt.includes('WARNING') && !txt.includes('DeprecationWarning')) {
+        botLog('STDERR: ' + txt.slice(0, 200), 'warn', account_id, campaign.id);
       }
-      L('Logged in as: @' + igUser);
+    });
 
-      // Step 3: Parse keywords (same as TM CFG.keywords + EXTRA_KEYWORDS)
-      let keywords = [];
-      try {
-        keywords = typeof campaign.keywords === 'string'
-          ? JSON.parse(campaign.keywords)
-          : (campaign.keywords || []);
-      } catch {}
-      const EXTRA_KEYWORDS = [
-        'real estate agent delhi', 'property dealer delhi',
-        'delhi property', 'realestate delhi',
-        'homes delhi', 'flats delhi',
-        'property consultant delhi', 'real estate broker delhi',
-        'buy flat delhi', 'sell property delhi',
-      ];
-      const allKeywords = [...new Set([...keywords, ...EXTRA_KEYWORDS])];
-      L('Keywords: ' + allKeywords.length);
-
-      // Step 4: Load already-processed (same as TM loadProcessed())
-      const proc = db.prepare(
-        'SELECT target_username FROM processed_accounts WHERE account_id=? AND dm_sent=1'
-      ).all(account_id);
-      const processedSet = new Set(proc.map(r => r.target_username));
-      L('Already DMed: ' + processedSet.size + ' (will skip)');
-
-      // Step 5: Search targets (same as TM searchAccounts loop)
-      L('Searching targets...');
-      const targets = [];
-      for (const kw of allKeywords) {
-        if (_botStop) break;
-        // Check campaign still running in DB
-        const row = db.prepare('SELECT status FROM campaigns WHERE id=?').get(campaign_id);
-        if (row?.status !== 'running') { L('Campaign stopped from dashboard', 'warn'); break; }
-
-        const found = await botSearchAccounts(sessionId, csrfToken, kw);
-        const fresh = found.filter(u => !processedSet.has(u) && !targets.includes(u));
-        if (fresh.length) L('"' + kw + '" → ' + fresh.length + ' new');
-        targets.push(...fresh);
-        await botSleep(1200, 600);  // same as TM: sleep(1200, 600)
-        if (targets.length >= 60) break;
-      }
-
-      L('Total targets found: ' + targets.length);
-      if (!targets.length) { L('No new targets — all already DMed or no results', 'warn'); return; }
-      L('Starting DMs... (max ' + (campaign.max_dms || 50) + ')');
-
-      const maxDms   = campaign.max_dms || 50;
-      const cooldownMin = Math.max(13000, campaign.cooldown_ms || 13000);  // same as TM dmDelayMin
-      const cooldownMax = cooldownMin + 12000;                              // same as TM dmDelayMax
-      let dmCount = 0;
-
-      // Step 6: DM loop (mirrors TM main loop exactly)
-      for (const username of targets) {
-        if (_botStop)          { L('Stopped by user', 'warn'); break; }
-        if (dmCount >= maxDms) { L('Max DMs reached: ' + maxDms, 'warn'); break; }
-        if (processedSet.has(username)) continue;
-
-        // Check campaign still running
-        const row = db.prepare('SELECT status FROM campaigns WHERE id=?').get(campaign_id);
-        if (row?.status !== 'running') { L('Campaign stopped from dashboard', 'warn'); break; }
-
-        // Build base message (same placeholder replace as TM)
-        let baseMsg = (campaign.message || 'Hi {{username}}! I am a property consultant in Delhi. Are you looking to buy or invest in real estate? Lets connect!')
-          .replace(/\{\{username\}\}/g, username)
-          .replace(/\{\{sender\}\}/g,   '@' + (campaign.account_username || ''))
-          .replace(/\{\{category\}\}/g, campaign.parent_category || '');
-
-        // Groq enhance (same as TM rewriteMessage)
-        let finalMsg = baseMsg;
-        try {
-          const enhanced = await groqEnhance(baseMsg, {
-            category : campaign.parent_category,
-            location : campaign.location,
-            sender   : campaign.account_username,
-          });
-          if (enhanced?.enhanced && enhanced.enhanced.length >= 20) {
-            finalMsg = enhanced.enhanced;
-            L('AI rewrite (' + (enhanced.style_used || 'groq') + '): ' + finalMsg.slice(0, 70), 'info', username);
-          }
-        } catch {}
-
-        L('Sending DM to @' + username, 'info', username);
-
-        // Get user ID
-        const uid = await botGetUserId(sessionId, csrfToken, username);
-        if (!uid) {
-          L('User not found: @' + username + ' — skipping', 'warn', username);
-          processedSet.add(username);
-          try {
-            db.prepare('INSERT OR IGNORE INTO processed_accounts (account_id,target_username,source,dm_sent) VALUES (?,?,?,?)')
-              .run(account_id, username, 'bot', 0);
-          } catch {}
-          await botSleep(3000);
-          continue;
-        }
-
-        // Send DM
-        const sent = await botSendDM(sessionId, csrfToken, uid, finalMsg);
-        processedSet.add(username);
-
-        // Mark processed + update counters (same as TM markProcessed)
-        try {
-          db.prepare(
-            'INSERT OR IGNORE INTO processed_accounts (account_id,target_username,source,dm_sent,dm_sent_at) VALUES (?,?,?,?,?)'
-          ).run(account_id, username, 'bot', sent ? 1 : 0, sent ? new Date().toISOString() : null);
-
-          if (sent) {
-            db.prepare('UPDATE accounts SET dms_today=dms_today+1, dms_total=dms_total+1, last_active=? WHERE id=?')
-              .run(new Date().toISOString(), account_id);
-            db.prepare('UPDATE campaigns SET dms_sent=dms_sent+1 WHERE id=?').run(campaign_id);
-            dmCount++;
-            L('✓ DM sent → @' + username, 'success', username);
-          } else {
-            L('✗ DM failed: @' + username, 'warn', username);
-          }
-        } catch(e) { console.log('[Bot] DB error:', e.message); }
-
-        // Wait between DMs (same as TM: rnd(dmDelayMin, dmDelayMax))
-        const wait = botRnd(cooldownMin, cooldownMax);
-        L('Waiting ' + Math.round(wait / 1000) + 's... (' + dmCount + '/' + maxDms + ' sent)');
-        await botSleep(wait);
-      }
-
-      L('=== Session complete! ' + dmCount + ' DMs sent ===', 'success');
-
-    } catch(e) {
-      L('Bot crashed: ' + e.message, 'error');
-      console.error('[Bot] Stack:', e.stack);
-    } finally {
+    _botProcess.on('close', code => {
+      botLog(`Bot process ended (code: ${code})`, code === 0 ? 'info' : 'warn', account_id, campaign.id);
       _botRunning  = false;
-      _botStop     = false;
+      _botProcess  = null;
       _botCampaign = null;
       try {
-        const s = db.prepare('SELECT status FROM campaigns WHERE id=?').get(campaign_id);
+        const s = db.prepare('SELECT status FROM campaigns WHERE id=?').get(campaign.id);
         if (s?.status === 'running') {
-          db.prepare("UPDATE campaigns SET status='done', finished_at=? WHERE id=?")
-            .run(new Date().toISOString(), campaign_id);
+          db.prepare("UPDATE campaigns SET status='done',finished_at=? WHERE id=?")
+            .run(new Date().toISOString(), campaign.id);
         }
       } catch {}
-      L('Bot process ended');
-    }
+    });
+
+    _botProcess.on('error', err => {
+      botLog(`Failed to start python3: ${err.message} — is Python installed?`, 'error', account_id, campaign.id);
+      _botRunning  = false;
+      _botProcess  = null;
+      _botCampaign = null;
+    });
   }
 
-  // ── API endpoints ─────────────────────────────────────────────
+  // ── API endpoints ──────────────────────────────────────────────
   app.post('/api/pybot/start', auth, (req, res) => {
     console.log('[Bot] /api/pybot/start | body:', JSON.stringify(req.body), '| running:', _botRunning);
 
-    if (_botRunning) {
-      return res.status(409).json({ error: 'Bot already running — click Stop Bot first' });
+    if (_botRunning) return res.status(409).json({ error: 'Bot already running — click Stop first' });
+
+    const igPass = process.env.IG_PASSWORD || '';
+    if (!igPass) {
+      return res.status(400).json({
+        error: 'IG_PASSWORD not set! Go to Render → Environment → add IG_PASSWORD = your Instagram password'
+      });
     }
 
     const { campaign_id, account_id } = req.body;
 
-    // Find account — try by id, then by username, then first account
+    // Find account
     let acc = account_id ? db.prepare('SELECT * FROM accounts WHERE id=?').get(account_id) : null;
     if (!acc) acc = db.prepare('SELECT * FROM accounts WHERE username=?').get(process.env.IG_USERNAME || 'manofox_official');
     if (!acc) acc = db.prepare('SELECT * FROM accounts ORDER BY created_at LIMIT 1').get();
-    if (!acc) return res.status(404).json({ error: 'No accounts found. Add an account first.' });
+    if (!acc) return res.status(404).json({ error: 'No accounts found' });
 
-    // Get session — from account row, or env var
-    const sessionId = (acc.session_id && acc.session_id.length > 10)
-      ? acc.session_id
-      : (process.env.SESSION_ID || '');
-
-    if (!sessionId || sessionId.length < 10) {
-      return res.status(400).json({
-        error: 'No Instagram session! Go to Render → Environment → add SESSION_ID = your Instagram sessionid cookie value',
-        account: acc.username,
-        session_len: (sessionId || '').length,
-      });
-    }
-
-    // Find campaign — try by id, then first campaign
+    // Find campaign
     let campaign = campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id=?').get(campaign_id) : null;
     if (!campaign) campaign = db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC LIMIT 1').get();
-    if (!campaign) return res.status(404).json({ error: 'No campaigns found. Create a campaign first.' });
-
-    // Ensure message exists
-    if (!campaign.message || campaign.message.length < 5) {
-      db.prepare('UPDATE campaigns SET message=? WHERE id=?').run(
-        'Hi {{username}}! I am a real estate consultant in Delhi. Are you looking to buy or sell property? Lets connect!',
-        campaign.id
-      );
-      campaign.message = 'Hi {{username}}! I am a real estate consultant in Delhi. Are you looking to buy or sell property? Lets connect!';
-    }
+    if (!campaign) return res.status(404).json({ error: 'No campaigns found' });
 
     // Set running
     const now = new Date().toISOString();
-    db.prepare("UPDATE campaigns SET status='stopped',finished_at=? WHERE account_id=? AND id!=? AND status='running'")
-      .run(now, acc.id, campaign.id);
-    db.prepare("UPDATE campaigns SET status='running',started_at=? WHERE id=?")
-      .run(now, campaign.id);
+    db.prepare("UPDATE campaigns SET status='running',started_at=? WHERE id=?").run(now, campaign.id);
 
-    console.log('[Bot] Starting | campaign:', campaign.name, '| account:', acc.username, '| session_len:', sessionId.length);
-
-    runBot({ ...campaign, account_id: acc.id, account_username: acc.username }, sessionId)
-      .catch(e => console.error('[Bot] Uncaught:', e.message));
-
-    res.json({
-      ok: true,
-      message: 'Bot started!',
-      campaign: campaign.name,
-      account: acc.username,
-      session_len: sessionId.length,
-    });
+    runBot(campaign, acc.id);
+    res.json({ ok: true, message: 'Bot started!', campaign: campaign.name, account: acc.username });
   });
 
   app.post('/api/pybot/stop', auth, (req, res) => {
     _botStop = true;
+    if (_botProcess) {
+      _botProcess.kill('SIGTERM');
+      _botProcess = null;
+    }
     if (_botCampaign) {
       db.prepare("UPDATE campaigns SET status='stopped',finished_at=? WHERE id=?")
         .run(new Date().toISOString(), _botCampaign);
     }
-    res.json({ ok: true, message: 'Stop signal sent' });
+    _botRunning  = false;
+    _botCampaign = null;
+    res.json({ ok: true, message: 'Bot stopped' });
   });
 
   app.get('/api/pybot/logs', auth, (req, res) => {
     res.json(global._pyLogs || []);
   });
 
-  // Debug: check bot state + DB from browser
   app.get('/api/bot/debug', auth, (req, res) => {
     const campaigns = db.prepare('SELECT id, name, status, message, account_id FROM campaigns').all();
-    const accounts  = db.prepare('SELECT id, username, status, LENGTH(session_id) AS session_len FROM accounts').all();
+    const accounts  = db.prepare('SELECT id, username, status FROM accounts').all();
     res.json({
       botRunning : _botRunning,
       botCampaign: _botCampaign,
+      igUsername : process.env.IG_USERNAME || '',
+      igPassSet  : !!(process.env.IG_PASSWORD),
       campaigns,
       accounts,
     });
   });
-
-
 
   // ══════════════════════════════════════════════════════════════
   // CRON ENDPOINT — called by Render Cron Job or UptimeRobot

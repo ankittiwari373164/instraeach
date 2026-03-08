@@ -1,316 +1,220 @@
-#!/usr/bin/env python3
-# worker.py — InstaReach Python Bot (instagrapi)
-# Runs on Render server — no browser, no Puppeteer, no Xvfb needed
-# Uses Instagram's private mobile API directly via instagrapi
+"""
+InstaReach Worker — Instagram DM Bot
+Uses instagrapi (username+password login) — same approach as the reader script.
+"""
 
-import os, sys, json, time, random, requests, logging
+import sys, os, json, time, random, requests
 from datetime import datetime
-from instagrapi import Client
-from instagrapi.exceptions import (
-    LoginRequired, ChallengeRequired, UserNotFound,
-    DirectThreadNotFound, ClientError
-)
 
-# ── Config ────────────────────────────────────────────────────
-API_URL    = os.environ.get('API_URL',    'https://instraeach.onrender.com')
-ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
-ADMIN_PASS = os.environ.get('ADMIN_PASS', 'changeme123')
-ACCOUNT_ID  = os.environ.get('ACCOUNT_ID',  '')
-SESSION_ID  = os.environ.get('SESSION_ID',  '')
-CAMPAIGN_ID = os.environ.get('CAMPAIGN_ID', '')
-_data_dir = '/var/data' if os.path.isdir('/var/data') else '/tmp'
-SETTINGS_FILE = _data_dir + '/ig_settings.json'  # persists session on Render disk
+def log(msg, level="info"):
+    ts = datetime.now().strftime("%H:%M:%S")
+    prefix = {"info":"P","success":"OK","error":"ERR","warn":"WARN"}.get(level,"P")
+    print(f"[{ts}] {prefix} {msg}", flush=True)
 
-logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
-log = logging.getLogger('instraeach')
+# Install instagrapi if missing
+try:
+    from instagrapi import Client
+    from instagrapi.exceptions import LoginRequired, ChallengeRequired, TwoFactorRequired, UserNotFound
+    log("instagrapi ready")
+except ImportError:
+    log("Installing instagrapi...", "warn")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "instagrapi", "--quiet"])
+    from instagrapi import Client
+    from instagrapi.exceptions import LoginRequired, ChallengeRequired, TwoFactorRequired, UserNotFound
+    log("instagrapi installed")
 
-# ── Dashboard API ─────────────────────────────────────────────
-token = None
+# Config from env
+IG_USERNAME   = os.environ.get("IG_USERNAME", "")
+IG_PASSWORD   = os.environ.get("IG_PASSWORD", "")
+SESSION_FILE  = os.environ.get("SESSION_FILE", "./data/ig_session.json")
+CAMPAIGN_JSON = os.environ.get("CAMPAIGN_DATA", "{}")
+GROQ_KEY      = os.environ.get("GROQ_API_KEY", "")
 
-def api(method, path, body=None):
-    headers = {'Content-Type': 'application/json'}
-    if token:
-        headers['Authorization'] = 'Bearer ' + token
-    r = requests.request(method, API_URL + path, json=body, headers=headers, timeout=15)
+if not IG_USERNAME or not IG_PASSWORD:
+    log("ERROR: IG_USERNAME and IG_PASSWORD env vars required!", "error")
+    sys.exit(1)
+
+# Parse campaign
+try:
+    campaign = json.loads(CAMPAIGN_JSON)
+except:
+    campaign = {}
+
+CAMPAIGN_NAME = campaign.get("name", "Campaign")
+ACCOUNT_ID    = campaign.get("account_id", "default")
+MESSAGE_TPL   = campaign.get("message", "Hi {{username}}! I am a real estate consultant in Delhi. Interested in buying or selling? Lets connect!")
+MAX_DMS       = int(campaign.get("max_dms", 50))
+COOLDOWN_MIN  = max(15, int(campaign.get("cooldown_ms", 15000)) // 1000)
+COOLDOWN_MAX  = COOLDOWN_MIN + 12
+try:
+    kw_raw = campaign.get("keywords", "[]")
+    KEYWORDS = json.loads(kw_raw) if isinstance(kw_raw, str) else (kw_raw or [])
+except:
+    KEYWORDS = []
+
+EXTRA_KEYWORDS = [
+    "real estate agent delhi","property dealer delhi",
+    "delhi property","realestate delhi",
+    "homes delhi","flats delhi",
+    "property consultant delhi","real estate broker delhi",
+    "buy flat delhi","sell property delhi",
+]
+ALL_KEYWORDS = list(dict.fromkeys(KEYWORDS + EXTRA_KEYWORDS))
+
+# Groq AI rewrite
+GROQ_STYLES = ["casual and friendly","professional and concise","curious and engaging","warm and personal","brief and direct"]
+
+def groq_enhance(base_msg, username):
+    if not GROQ_KEY:
+        return base_msg
     try:
-        return r.json()
-    except:
-        return {}
+        style = random.choice(GROQ_STYLES)
+        prompt = f"Rewrite this Instagram DM in a {style} tone. Keep under 200 chars. Replace {{{{username}}}} with @{username}. Original: {base_msg}\nReturn ONLY the rewritten message."
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
+            json={"model":"llama3-8b-8192","messages":[{"role":"user","content":prompt}],"max_tokens":200},
+            timeout=10
+        )
+        result = resp.json()["choices"][0]["message"]["content"].strip()
+        if len(result) >= 20:
+            log(f"AI ({style[:15]}): {result[:60]}")
+            return result
+    except Exception as e:
+        log(f"Groq error: {e}", "warn")
+    return base_msg.replace("{{username}}", f"@{username}").replace("{{sender}}", f"@{IG_USERNAME}")
 
-def login_dashboard():
-    global token
-    r = api('POST', '/api/login', {'username': ADMIN_USER, 'password': ADMIN_PASS})
-    if not r.get('token'):
-        raise Exception('Dashboard login failed: ' + str(r))
-    token = r['token']
-    log.info('✓ Dashboard login OK')
-
-def log_to_db(msg, level='info', username=None):
-    log.info(f'{level.upper()} {msg}')
-    try:
-        api('POST', '/api/log', {
-            'account_id': ACCOUNT_ID,
-            'level': level,
-            'message': msg,
-            'username': username,
-            'key': SESSION_ID,
-        })
-    except:
-        pass
-
-def mark_processed(campaign_id, username, sent):
-    try:
-        api('POST', '/api/processed', {
-            'account_id': ACCOUNT_ID,
-            'campaign_id': campaign_id,
-            'target_username': username,
-            'source': 'bot',
-            'dm_sent': sent,
-            'key': SESSION_ID,
-        })
-    except:
-        pass
-
-def check_running(campaign_id):
-    try:
-        r = api('GET', f'/api/campaigns/{campaign_id}/status')
-        return r.get('status') == 'running'
-    except:
-        return True
-
-def enhance_message(message, campaign_id):
-    try:
-        r = api('POST', '/api/enhance-message', {
-            'message': message,
-            'campaign_id': campaign_id,
-            'account_id': ACCOUNT_ID,
-            'key': SESSION_ID,
-        })
-        enhanced = r.get('enhanced', '')
-        if enhanced and len(enhanced) > 20:
-            return enhanced
-    except:
-        pass
-    return message
-
-# ── Instagram client ──────────────────────────────────────────
-def create_client():
+# Login — same logic as the reader script
+def get_client():
     cl = Client()
-    # Set mobile device settings to look like a real phone
-    cl.set_device({
-        'app_version': '269.0.0.18.75',
-        'android_version': 26,
-        'android_release': '8.0.0',
-        'dpi': '480dpi',
-        'resolution': '1080x1920',
-        'manufacturer': 'OnePlus',
-        'device': 'ONEPLUS A3003',
-        'model': 'OnePlus3',
-        'cpu': 'qcom',
-        'version_code': '314665256',
-    })
-    cl.set_user_agent(
-        'Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; OnePlus; ONEPLUS A3003; OnePlus3; qcom; en_IN; 314665256)'
-    )
-    return cl
+    cl.delay_range = [2, 5]
+    os.makedirs("./data", exist_ok=True)
 
-def login_instagram(cl):
-    # Try loading saved settings first (avoids re-login challenges)
-    if os.path.exists(SETTINGS_FILE):
+    if os.path.exists(SESSION_FILE):
+        log("Loading saved session...")
         try:
-            cl.load_settings(SETTINGS_FILE)
-            cl.login(cl.username, cl.password)
-            log.info('✓ Instagram session restored from saved settings')
-            return
+            cl.load_settings(SESSION_FILE)
+            cl.login(IG_USERNAME, IG_PASSWORD)
+            info = cl.account_info()
+            log(f"Session restored: @{info.username}", "success")
+            return cl
         except Exception as e:
-            log.warning(f'Saved session failed: {e} — logging in fresh')
+            log(f"Saved session invalid ({e}), fresh login...", "warn")
+            try: os.remove(SESSION_FILE)
+            except: pass
 
-    # Login by session ID
+    log(f"Logging in as @{IG_USERNAME}...")
     try:
-        cl.login_by_sessionid(SESSION_ID)
-        log.info('✓ Instagram logged in via sessionid')
-        # Save settings for next time
-        os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-        cl.dump_settings(SETTINGS_FILE)
-    except LoginRequired:
-        raise Exception('Session expired — update SESSION_ID in Render env vars')
+        cl.login(IG_USERNAME, IG_PASSWORD)
+        cl.dump_settings(SESSION_FILE)
+        info = cl.account_info()
+        log(f"Logged in: @{info.username}", "success")
+        return cl
+    except TwoFactorRequired:
+        log("2FA required — disable 2FA on Instagram and retry", "error")
+        sys.exit(1)
     except ChallengeRequired:
-        raise Exception('Instagram challenge required — open Instagram app and verify')
+        log("Instagram challenge required — open Instagram app, verify, then retry", "error")
+        sys.exit(1)
+    except Exception as e:
+        log(f"Login failed: {e}", "error")
+        sys.exit(1)
 
-# ── Search users ──────────────────────────────────────────────
-def search_users(cl, keyword, limit=10):
+# Processed accounts persistence
+def load_processed():
+    try:
+        pfile = f"./data/processed_{ACCOUNT_ID[:8]}.json"
+        if os.path.exists(pfile):
+            with open(pfile) as f:
+                return set(json.load(f))
+    except: pass
+    return set()
+
+def save_processed(s):
+    try:
+        with open(f"./data/processed_{ACCOUNT_ID[:8]}.json", "w") as f:
+            json.dump(list(s), f)
+    except: pass
+
+# Search
+def search_users(cl, keyword, limit=15):
     try:
         results = cl.search_users(keyword, count=limit)
         return [u.username for u in results if u.username]
     except Exception as e:
-        log.warning(f'Search failed for "{keyword}": {e}')
+        log(f'Search "{keyword}": {e}', "warn")
         return []
 
-# ── Send DM ───────────────────────────────────────────────────
-def send_dm(cl, username, message, image_url=None):
+# Send DM
+def send_dm(cl, username, message):
     try:
-        # Get user ID
         user_id = cl.user_id_from_username(username)
-        if not user_id:
-            log_to_db(f'User not found: @{username}', 'warn', username)
-            return False
-
-        # Send image if set
-        if image_url:
-            try:
-                full_url = image_url if image_url.startswith('http') else API_URL + image_url
-                img_resp = requests.get(full_url, timeout=15)
-                if img_resp.status_code == 200:
-                    # Save temp file
-                    tmp_path = f'/tmp/ig_img_{int(time.time())}.jpg'
-                    with open(tmp_path, 'wb') as f:
-                        f.write(img_resp.content)
-                    cl.direct_send_photo(tmp_path, [user_id])
-                    os.remove(tmp_path)
-                    log_to_db(f'✓ Image sent → @{username}', 'info', username)
-            except Exception as e:
-                log_to_db(f'Image send failed: {e} — text only', 'warn', username)
-
-        # Send text message
-        cl.direct_send(message, [user_id])
-        log_to_db(f'✓ DM sent → @{username}', 'success', username)
+        cl.direct_send(message, user_ids=[user_id])
         return True
-
     except UserNotFound:
-        log_to_db(f'User not found: @{username}', 'warn', username)
+        log(f"Not found: @{username}", "warn")
         return False
     except Exception as e:
-        log_to_db(f'DM failed @{username}: {str(e)}', 'error', username)
+        log(f"DM error @{username}: {e}", "warn")
         return False
 
-# ── Main ──────────────────────────────────────────────────────
+# Main
 def main():
-    if not SESSION_ID or SESSION_ID == 'PASTE_YOUR_SESSION_ID_HERE':
-        log.error('SESSION_ID not set in environment variables!')
-        sys.exit(1)
-    if not ACCOUNT_ID:
-        log.error('ACCOUNT_ID not set in environment variables!')
-        sys.exit(1)
+    log(f"=== Bot starting: {CAMPAIGN_NAME} ===")
+    log(f"Account: @{IG_USERNAME} | Max DMs: {MAX_DMS} | Keywords: {len(ALL_KEYWORDS)}")
 
-    log.info('InstaReach Python Bot starting...')
+    cl = get_client()
 
-    # Login to dashboard
-    login_dashboard()
+    processed = load_processed()
+    log(f"Already DMed: {len(processed)} (will skip)")
 
-    # Get running campaign
-    campaigns = api('GET', '/api/campaigns')
-    if not isinstance(campaigns, list) or not campaigns:
-        log.error('No campaigns found')
-        sys.exit(1)
-
-    if CAMPAIGN_ID:
-        campaign = next((c for c in campaigns if c.get('id') == CAMPAIGN_ID), None)
-        log.info('Looking for campaign %s: %s' % (CAMPAIGN_ID, 'found' if campaign else 'NOT FOUND'))
-    else:
-        campaign = next((c for c in campaigns if c.get('account_id') == ACCOUNT_ID), None)
-
-    if not campaign:
-        log.error('No campaign found for this account')
-        sys.exit(1)
-
-    campaign_id = campaign['id']
-    log.info(f'Campaign: {campaign["name"]} | Max DMs: {campaign.get("max_dms", 50)}')
-
-    # Load already-processed
-    proc = api('GET', f'/api/processed?account_id={ACCOUNT_ID}&key={SESSION_ID}')
-    processed = set()
-    if isinstance(proc, list):
-        processed = {p['target_username'] for p in proc if p.get('dm_sent_at')}
-    log.info(f'Already DMed: {len(processed)} accounts (will skip)')
-
-    # Login to Instagram
-    cl = create_client()
-    login_instagram(cl)
-
-    # Keywords
-    keywords = []
-    try:
-        kw = campaign.get('keywords', [])
-        keywords = json.loads(kw) if isinstance(kw, str) else kw
-    except:
-        pass
-
-    EXTRA = [
-        'real estate agent delhi', 'property dealer delhi', 'delhi property',
-        'realestate delhi', 'homes delhi', 'flats delhi',
-        'property consultant delhi', 'real estate broker delhi',
-        'buy flat delhi', 'sell property delhi',
-    ]
-    all_keywords = list(dict.fromkeys(keywords + EXTRA))  # dedupe, preserve order
-    log.info(f'Searching {len(all_keywords)} keywords...')
-
-    # Collect targets
+    log("Searching targets...")
     targets = []
-    for kw in all_keywords:
-        if not check_running(campaign_id):
-            break
-        found = search_users(cl, kw, limit=15)
-        fresh = [u for u in found if u not in processed and u not in targets]
+    for kw in ALL_KEYWORDS:
+        found = search_users(cl, kw)
+        fresh = [u for u in found if u not in processed and u not in targets and u != IG_USERNAME]
         if fresh:
-            log.info(f'"{kw}" → {len(fresh)} new targets')
+            log(f'"{kw}" -> {len(fresh)} new')
         targets.extend(fresh)
-        time.sleep(random.uniform(1.5, 3.0))
+        time.sleep(random.uniform(1.0, 2.0))
         if len(targets) >= 80:
             break
 
-    log.info(f'Total targets: {len(targets)}')
-
+    log(f"Total targets: {len(targets)}")
     if not targets:
-        log_to_db('No new targets found — add more keywords in dashboard', 'warn')
-        sys.exit(0)
+        log("No new targets found", "warn")
+        return
 
-    # Send DMs
-    max_dms  = campaign.get('max_dms', 50)
-    cooldown = max(12, (campaign.get('cooldown_ms', 13000) or 13000) / 1000)
+    log(f"Starting DMs (max {MAX_DMS})...")
     dm_count = 0
-    account_username = campaign.get('account_username', '')
-
-    log_to_db(f'Starting DMs — {len(targets)} targets, max {max_dms}')
 
     for username in targets:
-        if dm_count >= max_dms:
-            log_to_db(f'Max DMs ({max_dms}) reached', 'warn')
-            break
-        if not check_running(campaign_id):
-            log_to_db('Campaign stopped from dashboard', 'warn')
+        if dm_count >= MAX_DMS:
+            log(f"Max DMs reached: {MAX_DMS}", "warn")
             break
         if username in processed:
             continue
 
-        # Build message
-        base_msg = (campaign.get('message') or '') \
-            .replace('{{username}}', username) \
-            .replace('{{sender}}',   '@' + account_username) \
-            .replace('{{category}}', campaign.get('parent_category') or '')
+        base_msg = MESSAGE_TPL.replace("{{username}}", f"@{username}").replace("{{sender}}", f"@{IG_USERNAME}")
+        final_msg = groq_enhance(base_msg, username)
 
-        # Groq enhance
-        final_msg = enhance_message(base_msg, campaign_id)
-        if final_msg != base_msg:
-            log.info(f'✨ AI enhanced for @{username}')
-
-        result = send_dm(cl, username, final_msg, campaign.get('image_url'))
-        mark_processed(campaign_id, username, result)
+        log(f"Sending DM to @{username}...")
+        sent = send_dm(cl, username, final_msg)
         processed.add(username)
-        if result:
-            dm_count += 1
+        save_processed(processed)
 
-        # Human-like delay
-        wait = random.uniform(cooldown, cooldown + 12)
-        log.info(f'Waiting {wait:.0f}s... ({dm_count}/{max_dms} sent)')
+        if sent:
+            dm_count += 1
+            log(f"DM sent -> @{username} ({dm_count}/{MAX_DMS})", "success")
+        else:
+            log(f"Failed: @{username}", "warn")
+
+        wait = random.uniform(COOLDOWN_MIN, COOLDOWN_MAX)
+        log(f"Waiting {wait:.0f}s...")
         time.sleep(wait)
 
-    # Mark campaign done
-    log_to_db(f'Session complete — {dm_count} DMs sent', 'success')
-    api('PATCH', f'/api/campaigns/{campaign_id}/status', {'status': 'done'})
+    log(f"=== Done! {dm_count} DMs sent ===", "success")
 
-    # Save session for next run
-    cl.dump_settings(SETTINGS_FILE)
-    log.info('✓ Session saved')
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
