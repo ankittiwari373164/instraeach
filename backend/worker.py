@@ -11,6 +11,25 @@ def log(msg, level="info"):
     prefix = {"info":"P","success":"OK","error":"ERR","warn":"WARN"}.get(level,"P")
     print(f"[{ts}] {prefix} {msg}", flush=True)
 
+def _install_instagrapi():
+    import subprocess
+    cmds = [
+        [sys.executable, "-m", "pip", "install", "instagrapi==2.1.2", "requests", "--quiet", "--break-system-packages"],
+        [sys.executable, "-m", "pip", "install", "instagrapi==2.1.2", "requests", "--quiet"],
+        ["pip3", "install", "instagrapi==2.1.2", "requests", "--quiet", "--break-system-packages"],
+        ["pip3", "install", "instagrapi==2.1.2", "requests", "--quiet"],
+    ]
+    for cmd in cmds:
+        try:
+            result = subprocess.run(cmd, timeout=180, capture_output=True, text=True)
+            if result.returncode == 0:
+                log(f"instagrapi installed via: {cmd[0]} {cmd[2]}", "success")
+                return True
+            log(f"pip attempt failed: {result.stderr[:80]}", "warn")
+        except Exception as e:
+            log(f"pip error: {e}", "warn")
+    return False
+
 try:
     from instagrapi import Client
     from instagrapi.exceptions import (
@@ -19,20 +38,22 @@ try:
     )
     log("instagrapi ready")
 except ImportError:
-    log("Installing instagrapi...", "warn")
-    import subprocess
-    for cmd in [
-        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet", "--break-system-packages"],
-        [sys.executable, "-m", "pip", "install", "instagrapi", "requests", "--quiet"],
-    ]:
-        try: subprocess.check_call(cmd, timeout=180); break
-        except: pass
-    from instagrapi import Client
-    from instagrapi.exceptions import (
-        LoginRequired, ChallengeRequired, TwoFactorRequired,
-        UserNotFound, RateLimitError
-    )
-    log("instagrapi installed")
+    log("instagrapi not found - installing...", "warn")
+    ok = _install_instagrapi()
+    if not ok:
+        log("FATAL: Could not install instagrapi. Check build logs in Render.", "error")
+        log("Fix: add 'pip3 install instagrapi' to your Render build command", "error")
+        sys.exit(1)
+    try:
+        from instagrapi import Client
+        from instagrapi.exceptions import (
+            LoginRequired, ChallengeRequired, TwoFactorRequired,
+            UserNotFound, RateLimitError
+        )
+        log("instagrapi installed and loaded", "success")
+    except ImportError as e:
+        log(f"FATAL: instagrapi import failed after install: {e}", "error")
+        sys.exit(1)
 
 # ── DETECTION VECTOR 5: Proxy manager ────────────────────────
 # Instagram blocks datacenter IPs (Render/AWS/etc)
