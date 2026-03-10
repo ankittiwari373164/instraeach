@@ -87,6 +87,67 @@ WEBSHARE_PROXIES = [
 ]
 _proxy_index = 0
 
+# ── Config from environment ────────────────────────────────────
+IG_USERNAME   = os.environ.get("IG_USERNAME", "")
+IG_PASSWORD   = os.environ.get("IG_PASSWORD", "")
+SESSION_FILE  = os.environ.get("SESSION_FILE", "./data/ig_session.json")
+GROQ_KEY      = os.environ.get("GROQ_API_KEY", "")
+
+if not IG_USERNAME or not IG_PASSWORD:
+    log("ERROR: IG_USERNAME and IG_PASSWORD env vars required!", "error")
+    sys.exit(1)
+
+try:
+    campaign = json.loads(os.environ.get("CAMPAIGN_DATA", "{}"))
+except:
+    campaign = {}
+
+CAMPAIGN_NAME  = campaign.get("name", "Campaign")
+ACCOUNT_ID     = campaign.get("account_id", "default")
+MESSAGE_TPL    = campaign.get("message", "Hi {{username}}! I help Delhi businesses grow online - websites, social media, ads. Interested in connecting?")
+MAX_DMS        = min(int(campaign.get("max_dms", 15)), 15)
+PROCESSED_FILE = f"./data/processed_{ACCOUNT_ID[:8]}.json"
+REPLIES_FILE   = f"./data/replies_{ACCOUNT_ID[:8]}.json"
+STATS_FILE     = f"./data/stats_{ACCOUNT_ID[:8]}.json"
+
+try:
+    kw_raw   = campaign.get("keywords", "[]")
+    KEYWORDS = json.loads(kw_raw) if isinstance(kw_raw, str) else (kw_raw or [])
+except:
+    KEYWORDS = []
+
+EXTRA_KEYWORDS = [
+    "real estate agent delhi", "property dealer delhi",
+    "delhi property", "realestate delhi",
+    "homes delhi", "flats delhi",
+    "property consultant delhi", "real estate broker delhi",
+]
+ALL_KEYWORDS = list(dict.fromkeys(KEYWORDS + EXTRA_KEYWORDS))
+
+# Device pool for consistent fingerprinting
+DEVICE_POOL = [
+    {"app_version":"296.0.0.35.109","android_version":31,"android_release":"12.0.0","dpi":"480dpi","resolution":"1080x2400","manufacturer":"samsung","device":"SM-G991B","model":"Samsung Galaxy S21","cpu":"exynos2100","version_code":"514340314"},
+    {"app_version":"296.0.0.35.109","android_version":30,"android_release":"11.0.0","dpi":"395dpi","resolution":"1080x2400","manufacturer":"Xiaomi","device":"sweetin","model":"M2101K6P","cpu":"qcom","version_code":"514340314"},
+    {"app_version":"296.0.0.35.109","android_version":31,"android_release":"12.0.0","dpi":"410dpi","resolution":"1080x2412","manufacturer":"OnePlus","device":"IV2201","model":"IV2201","cpu":"qcom","version_code":"514340314"},
+    {"app_version":"296.0.0.35.109","android_version":31,"android_release":"12.0.0","dpi":"452dpi","resolution":"1080x2400","manufacturer":"realme","device":"RMX3393","model":"RMX3393","cpu":"qcom","version_code":"514340314"},
+]
+
+def get_device_for_account():
+    idx = int(hashlib.md5(ACCOUNT_ID.encode()).hexdigest(), 16) % len(DEVICE_POOL)
+    return DEVICE_POOL[idx]
+
+# Groq models + styles
+GROQ_MODELS = ["llama-3.1-8b-instant","llama3-8b-8192","llama-3.3-70b-versatile","gemma2-9b-it"]
+GROQ_STYLES = ["casual and friendly","professional and concise","curious and engaging","warm and personal","brief and direct"]
+MESSAGE_VARIANTS = [
+    "Hey {{username}}! We help Delhi businesses get more clients online. Interested in a free consult?",
+    "Hi {{username}}, noticed your work! We do websites + social media for real estate pros. Worth a quick chat?",
+    "{{username}} your listings look great! We help agents get more leads online. Open to connecting?",
+    "Hey {{username}}! We specialize in digital growth for property professionals in Delhi. Would love to help!",
+]
+_sent_hashes = set()
+
+
 def get_proxy():
     """Primary proxy getter - Webshare list first, then IG_PROXY env var"""
     if WEBSHARE_USER and WEBSHARE_PASS and WEBSHARE_PROXIES:
