@@ -155,6 +155,7 @@ def get_free_proxy(attempt=0):
 
     log("No working proxy found", "warn")
     return None
+
 def make_client():
     cl = Client()
     device = get_device_for_account()
@@ -196,7 +197,7 @@ def get_client():
         log("Loading saved session...")
         try:
             cl.load_settings(SESSION_FILE)
-            cl.login(LOGIN_ID, IG_PASSWORD)
+            cl.login(IG_USERNAME.strip().lstrip("@").lower(), IG_PASSWORD)
             info = cl.account_info()
             log(f"Session restored: @{info.username}", "success")
             return cl
