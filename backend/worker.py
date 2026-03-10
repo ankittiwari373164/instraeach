@@ -34,6 +34,120 @@ except ImportError:
     )
     log("instagrapi installed")
 
+# ── DETECTION VECTOR 5: Proxy manager ────────────────────────
+# Instagram blocks datacenter IPs (Render/AWS/etc)
+# Use a residential proxy if IG_PROXY env var is set
+# Format: http://user:pass@host:port  OR  socks5://host:port
+# Free option: set IG_PROXY=none to skip (will retry on block)
+# Paid recommended: Webshare.io ($3/mo) or Oxylabs residential
+
+# ── Webshare proxy pool ────────────────────────────────────────
+# Reads from env vars:
+#   IG_PROXY          = single proxy URL (legacy)
+#   WEBSHARE_USER     = webshare username
+#   WEBSHARE_PASS     = webshare password
+# Webshare rotates IPs automatically on each connection request
+# Format used: http://user:pass@proxy.webshare.io:80
+
+WEBSHARE_USER = os.environ.get("WEBSHARE_USER", "")
+WEBSHARE_PASS = os.environ.get("WEBSHARE_PASS", "")
+WEBSHARE_ENDPOINT = "proxy.webshare.io"
+WEBSHARE_PORT = "80"
+
+# Known proxy list from Webshare dashboard (auto-populated from env or hardcoded)
+# These rotate automatically - Webshare picks a different IP each time
+_proxy_index = 0
+
+def get_webshare_proxy():
+    """
+    Returns Webshare rotating proxy URL.
+    Each call can use a different endpoint for rotation.
+    """
+    if not WEBSHARE_USER or not WEBSHARE_PASS:
+        return None
+    # Webshare rotating residential endpoint - different IP every request
+    return f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{WEBSHARE_ENDPOINT}:{WEBSHARE_PORT}"
+
+def get_proxy():
+    """Get proxy URL - Webshare first, then IG_PROXY env var"""
+    # Try Webshare credentials
+    ws = get_webshare_proxy()
+    if ws:
+        return ws
+    # Fall back to direct IG_PROXY env var
+    proxy = os.environ.get("IG_PROXY", "").strip()
+    if proxy and proxy.lower() != "none":
+        return proxy
+    return None
+
+def apply_proxy(cl, proxy_url):
+    if not proxy_url:
+        return cl
+    try:
+        cl.set_proxy(proxy_url)
+        # Mask password in log
+        display = proxy_url
+        if "@" in proxy_url:
+            parts = proxy_url.split("@")
+            display = "...@" + parts[-1]
+        log(f"Proxy: {display}", "success")
+    except Exception as e:
+        log(f"Proxy setup error: {e}", "warn")
+    return cl
+
+def test_proxy(proxy_url):
+    """Quick test if proxy can reach Instagram"""
+    try:
+        r = requests.get(
+            "https://i.instagram.com/api/v1/si/fetch_headers/",
+            proxies={"https": proxy_url, "http": proxy_url},
+            timeout=8,
+            headers={"User-Agent": "Instagram 269.0.0.18.75 Android"}
+        )
+        return r.status_code in (200, 400, 429, 403)
+    except:
+        return False
+
+def get_free_proxy():
+    """
+    Try Webshare first. If not configured, fetch free public proxies.
+    """
+    # Webshare (best option - free 10 proxies)
+    ws = get_webshare_proxy()
+    if ws:
+        log("Using Webshare proxy...")
+        if test_proxy(ws):
+            log("Webshare proxy working!", "success")
+            return ws
+        else:
+            log("Webshare proxy not responding - trying free list...", "warn")
+
+    # Free public proxy fallback
+    log("Fetching free proxies...", "warn")
+    sources = [
+        "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=8000&country=all&ssl=all&anonymity=elite",
+        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+        "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    ]
+    all_proxies = []
+    for url in sources:
+        try:
+            r = requests.get(url, timeout=10)
+            found = [p.strip() for p in r.text.strip().split("\n") if ":" in p and len(p.strip()) < 22]
+            all_proxies.extend(found[:40])
+            if len(all_proxies) >= 80: break
+        except: continue
+
+    random.shuffle(all_proxies)
+    for proxy in all_proxies[:15]:
+        purl = f"http://{proxy}"
+        if test_proxy(purl):
+            log(f"Free proxy working: {proxy}", "success")
+            return purl
+
+    log("No working proxy found", "warn")
+    return None
+
 # ── Config ─────────────────────────────────────────────────────
 IG_USERNAME   = os.environ.get("IG_USERNAME", "")
 IG_PASSWORD   = os.environ.get("IG_PASSWORD", "")
@@ -306,24 +420,87 @@ def check_daily_limit(stats):
     return True, today_count
 
 # ── Login / session ────────────────────────────────────────────
+# DETECTION VECTOR 5: Rotate between multiple realistic Indian Android devices
+# Same account always uses same device (fingerprint must be CONSISTENT per session)
+DEVICE_POOL = [
+    {   # Samsung Galaxy S21 - most common in India 2023-24
+        "app_version": "296.0.0.35.109",
+        "android_version": 31,
+        "android_release": "12.0.0",
+        "dpi": "480dpi",
+        "resolution": "1080x2400",
+        "manufacturer": "samsung",
+        "device": "SM-G991B",
+        "model": "Samsung Galaxy S21",
+        "cpu": "exynos2100",
+        "version_code": "514340314",
+    },
+    {   # Redmi Note 10 Pro - extremely common India budget phone
+        "app_version": "296.0.0.35.109",
+        "android_version": 30,
+        "android_release": "11.0.0",
+        "dpi": "395dpi",
+        "resolution": "1080x2400",
+        "manufacturer": "Xiaomi",
+        "device": "sweetin",
+        "model": "M2101K6P",
+        "cpu": "qcom",
+        "version_code": "514340314",
+    },
+    {   # OnePlus Nord CE 2 - popular India mid-range
+        "app_version": "296.0.0.35.109",
+        "android_version": 31,
+        "android_release": "12.0.0",
+        "dpi": "410dpi",
+        "resolution": "1080x2412",
+        "manufacturer": "OnePlus",
+        "device": "IV2201",
+        "model": "IV2201",
+        "cpu": "qcom",
+        "version_code": "514340314",
+    },
+    {   # Realme 9 Pro+ - common India phone
+        "app_version": "296.0.0.35.109",
+        "android_version": 31,
+        "android_release": "12.0.0",
+        "dpi": "452dpi",
+        "resolution": "1080x2400",
+        "manufacturer": "realme",
+        "device": "RMX3393",
+        "model": "RMX3393",
+        "cpu": "qcom",
+        "version_code": "514340314",
+    },
+]
+
+def get_device_for_account():
+    """Always return the same device for this account (consistent fingerprint)"""
+    # Derive device index from account ID hash - same account = same device always
+    idx = int(hashlib.md5(ACCOUNT_ID.encode()).hexdigest(), 16) % len(DEVICE_POOL)
+    return DEVICE_POOL[idx]
+
 def make_client():
     cl = Client()
-    # DETECTION VECTOR 5: Realistic Indian device fingerprint
-    cl.set_device({
-        "app_version": "269.0.0.18.75",
-        "android_version": 28,
-        "android_release": "9.0.0",
-        "dpi": "420dpi",
-        "resolution": "1080x2220",
-        "manufacturer": "samsung",
-        "device": "SM-G960F",
-        "model": "Samsung Galaxy S9",
-        "cpu": "exynos9810",
-        "version_code": "314665256",
-    })
+    device = get_device_for_account()
+    cl.set_device(device)
     cl.set_locale("en_IN")
     cl.set_timezone_offset(19800)  # IST +5:30
     cl.delay_range = [3, 8]
+    log(f"Device: {device['model']} (Android {device['android_release']})")
+    # Apply proxy if configured (solves datacenter IP blocking)
+    proxy = get_proxy()
+    if proxy:
+        apply_proxy(cl, proxy)
+    else:
+        # Running on a datacenter? Try free rotating proxy automatically
+        is_render = os.environ.get("RENDER", "") or os.environ.get("IS_PULL_REQUEST", "")
+        if is_render:
+            log("Render datacenter detected - fetching free rotating proxy...", "warn")
+            free_proxy = get_free_proxy()
+            if free_proxy:
+                apply_proxy(cl, free_proxy)
+            else:
+                log("No free proxy found - login may fail. Best fix: run bot locally on your PC", "warn")
     return cl
 
 def get_client():
@@ -352,40 +529,65 @@ def get_client():
             try: os.remove(SESSION_FILE)
             except: pass
 
-    # Fresh login with retry (Instagram sometimes returns empty on first attempt)
+    # Fresh login — try with different proxies on each attempt
     last_err = None
-    for attempt in range(1, 4):
-        log(f"Fresh login as @{IG_USERNAME} (attempt {attempt}/3)...")
-        wait = random.uniform(3, 7) * attempt
-        time.sleep(wait)
+    proxies_tried = set()
+
+    for attempt in range(1, 6):  # up to 5 attempts
+        log(f"Login attempt {attempt}/5 as @{IG_USERNAME}...")
+        time.sleep(random.uniform(3, 8) * min(attempt, 3))
         try:
-            cl2 = make_client()  # fresh client each attempt
+            cl2 = make_client()
+
+            # On attempt 2+, always try a fresh proxy
+            if attempt >= 2:
+                # First try IG_PROXY env var if set
+                env_proxy = get_proxy()
+                if env_proxy and env_proxy not in proxies_tried:
+                    apply_proxy(cl2, env_proxy)
+                    proxies_tried.add(env_proxy)
+                else:
+                    # Fetch a new free proxy
+                    free_p = get_free_proxy()
+                    if free_p and free_p not in proxies_tried:
+                        apply_proxy(cl2, free_p)
+                        proxies_tried.add(free_p)
+                    else:
+                        log(f"No new proxy available for attempt {attempt} - trying direct...", "warn")
+
             cl2.login(IG_USERNAME, IG_PASSWORD)
             cl2.dump_settings(SESSION_FILE)
             info = cl2.account_info()
             log(f"Logged in: @{info.username}", "success")
             return cl2
+
         except TwoFactorRequired:
             log("2FA required - disable 2FA on Instagram", "error")
             sys.exit(1)
         except ChallengeRequired:
-            log("Challenge required - approve in Instagram app, retry in 10 mins", "error")
+            log("Challenge required - open Instagram app and approve login, then wait 10 min and retry", "error")
             sys.exit(1)
         except Exception as e:
             last_err = str(e)
-            log(f"Login attempt {attempt} failed: {last_err[:80]}", "warn")
-            if "Expecting value" in last_err or "JSONDecodeError" in last_err:
-                log("Instagram returned empty response - IP may be temporarily rate limited", "warn")
-                log(f"Waiting 3 minutes before retry...", "warn")
-                time.sleep(180)
-            elif "checkpoint" in last_err.lower() or "challenge" in last_err.lower():
-                log("Challenge required - approve in Instagram app, retry in 10 mins", "error")
-                sys.exit(1)
-            else:
-                time.sleep(30 * attempt)
+            is_ip_block = "Expecting value" in last_err or "JSONDecodeError" in last_err or "SSLError" in last_err
+            is_challenge = "checkpoint" in last_err.lower() or "challenge" in last_err.lower()
 
-    log(f"All login attempts failed: {last_err}", "error")
-    log("Possible causes: wrong password, account locked, IP blocked by Instagram", "error")
+            if is_challenge:
+                log("Challenge detected - approve in Instagram app, retry in 10 mins", "error")
+                sys.exit(1)
+            elif is_ip_block:
+                log(f"Attempt {attempt}: IP blocked by Instagram - switching proxy...", "warn")
+                if attempt < 5:
+                    time.sleep(random.uniform(20, 45))  # short wait then new proxy
+            else:
+                log(f"Attempt {attempt} failed: {last_err[:100]}", "warn")
+                time.sleep(30 * min(attempt, 3))
+
+    log(f"All 5 login attempts failed. Last error: {last_err}", "error")
+    log("Fix options:", "error")
+    log("  1. Run bot locally on your PC (best - uses home IP)", "error")
+    log("  2. Add IG_PROXY=http://user:pass@host:port in Render env vars", "error")
+    log("  3. Wait 30 min and try again (IP cooldown)", "error")
     sys.exit(1)
 
 def relogin(cl):
