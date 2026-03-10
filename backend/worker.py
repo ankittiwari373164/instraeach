@@ -51,52 +51,42 @@ except ImportError:
 
 WEBSHARE_USER = os.environ.get("WEBSHARE_USER", "")
 WEBSHARE_PASS = os.environ.get("WEBSHARE_PASS", "")
-WEBSHARE_ENDPOINT = "proxy.webshare.io"
-WEBSHARE_PORT = "80"
 
-# Known proxy list from Webshare dashboard (auto-populated from env or hardcoded)
-# These rotate automatically - Webshare picks a different IP each time
+# Your 9 Webshare free proxies from dashboard screenshot
+WEBSHARE_PROXIES = [
+    ("31.59.20.176",    "6754"),
+    ("23.95.150.145",   "6114"),
+    ("198.23.239.134",  "6540"),
+    ("45.38.107.97",    "6014"),
+    ("107.172.163.27",  "6543"),
+    ("198.105.121.200", "6462"),
+    ("64.137.96.74",    "6641"),
+    ("216.10.27.159",   "6837"),
+    ("142.111.67.146",  "5611"),
+]
 _proxy_index = 0
 
-def get_webshare_proxy():
-    """
-    Returns Webshare rotating proxy URL.
-    Each call can use a different endpoint for rotation.
-    """
-    if not WEBSHARE_USER or not WEBSHARE_PASS:
-        return None
-    # Webshare rotating residential endpoint - different IP every request
-    return f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{WEBSHARE_ENDPOINT}:{WEBSHARE_PORT}"
-
 def get_proxy():
-    """Get proxy URL - Webshare first, then IG_PROXY env var"""
-    # Try Webshare credentials
-    ws = get_webshare_proxy()
-    if ws:
-        return ws
-    # Fall back to direct IG_PROXY env var
-    proxy = os.environ.get("IG_PROXY", "").strip()
-    if proxy and proxy.lower() != "none":
-        return proxy
+    """Primary proxy getter - Webshare list first, then IG_PROXY env var"""
+    if WEBSHARE_USER and WEBSHARE_PASS and WEBSHARE_PROXIES:
+        host, port = WEBSHARE_PROXIES[0]
+        return f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{host}:{port}"
+    direct = os.environ.get("IG_PROXY", "").strip()
+    if direct and direct.lower() != "none":
+        return direct
     return None
 
 def apply_proxy(cl, proxy_url):
-    if not proxy_url:
-        return cl
+    if not proxy_url: return cl
     try:
         cl.set_proxy(proxy_url)
-        # Mask password in log
-        display = proxy_url
-        if "@" in proxy_url:
-            parts = proxy_url.split("@")
-            display = "...@" + parts[-1]
-        log(f"Proxy: {display}", "success")
+        display = ("...@" + proxy_url.split("@")[-1]) if "@" in proxy_url else proxy_url
+        log(f"Proxy active: {display}", "success")
     except Exception as e:
-        log(f"Proxy setup error: {e}", "warn")
+        log(f"Proxy error: {e}", "warn")
     return cl
 
 def test_proxy(proxy_url):
-    """Quick test if proxy can reach Instagram"""
     try:
         r = requests.get(
             "https://i.instagram.com/api/v1/si/fetch_headers/",
@@ -104,30 +94,27 @@ def test_proxy(proxy_url):
             timeout=8,
             headers={"User-Agent": "Instagram 269.0.0.18.75 Android"}
         )
-        return r.status_code in (200, 400, 429, 403)
-    except:
-        return False
+        return r.status_code in (200, 400, 403, 429)
+    except: return False
 
-def get_free_proxy():
-    """
-    Try Webshare first. If not configured, fetch free public proxies.
-    """
-    # Webshare (best option - free 10 proxies)
-    ws = get_webshare_proxy()
-    if ws:
-        log("Using Webshare proxy...")
-        if test_proxy(ws):
-            log("Webshare proxy working!", "success")
-            return ws
-        else:
-            log("Webshare proxy not responding - trying free list...", "warn")
+def get_free_proxy(attempt=0):
+    """Rotate through Webshare proxies, then fall back to free public proxies"""
+    if WEBSHARE_USER and WEBSHARE_PASS and WEBSHARE_PROXIES:
+        for i in range(len(WEBSHARE_PROXIES)):
+            idx = (attempt + i) % len(WEBSHARE_PROXIES)
+            host, port = WEBSHARE_PROXIES[idx]
+            purl = f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{host}:{port}"
+            log(f"Testing Webshare {idx+1}/{len(WEBSHARE_PROXIES)}: {host}:{port}")
+            if test_proxy(purl):
+                log(f"Webshare proxy {host}:{port} working!", "success")
+                return purl
+            time.sleep(2)
+        log("All Webshare proxies failed - trying free public proxies...", "warn")
 
-    # Free public proxy fallback
-    log("Fetching free proxies...", "warn")
+    log("Fetching free public proxies...", "warn")
     sources = [
         "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=8000&country=all&ssl=all&anonymity=elite",
         "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-        "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
     ]
     all_proxies = []
     for url in sources:
@@ -147,338 +134,6 @@ def get_free_proxy():
 
     log("No working proxy found", "warn")
     return None
-
-# ── Config ─────────────────────────────────────────────────────
-IG_USERNAME   = os.environ.get("IG_USERNAME", "")
-IG_PASSWORD   = os.environ.get("IG_PASSWORD", "")
-SESSION_FILE  = os.environ.get("SESSION_FILE", "./data/ig_session.json")
-CAMPAIGN_JSON = os.environ.get("CAMPAIGN_DATA", "{}")
-GROQ_KEY      = os.environ.get("GROQ_API_KEY", "")
-
-if not IG_USERNAME or not IG_PASSWORD:
-    log("ERROR: IG_USERNAME and IG_PASSWORD required!", "error")
-    sys.exit(1)
-
-try:
-    campaign = json.loads(CAMPAIGN_JSON)
-except:
-    campaign = {}
-
-CAMPAIGN_NAME = campaign.get("name", "Campaign")
-ACCOUNT_ID    = campaign.get("account_id", "default")
-MESSAGE_TPL   = campaign.get("message", "Hi {{username}}! I help businesses grow online - websites, social media, ads. Would love to connect!")
-# DETECTION VECTOR 1: Hard cap per session - stay well under Instagram limits
-MAX_DMS       = min(int(campaign.get("max_dms", 15)), 15)
-
-try:
-    kw_raw   = campaign.get("keywords", "[]")
-    KEYWORDS = json.loads(kw_raw) if isinstance(kw_raw, str) else (kw_raw or [])
-except:
-    KEYWORDS = []
-
-EXTRA_KEYWORDS = [
-    "real estate agent delhi", "property dealer delhi",
-    "delhi property", "realestate delhi",
-    "homes delhi", "flats delhi",
-    "property consultant delhi", "real estate broker delhi",
-]
-ALL_KEYWORDS   = list(dict.fromkeys(KEYWORDS + EXTRA_KEYWORDS))
-PROCESSED_FILE = f"./data/processed_{ACCOUNT_ID[:8]}.json"
-REPLIES_FILE   = f"./data/replies_{ACCOUNT_ID[:8]}.json"
-STATS_FILE     = f"./data/stats_{ACCOUNT_ID[:8]}.json"
-
-# ── DETECTION VECTOR 3: Message variation pool ─────────────────
-# Never send same message twice — unique phrasing every time
-MESSAGE_VARIANTS = [
-    "Hey {{username}}! We help Delhi businesses get more clients online. Interested in a free consult?",
-    "Hi {{username}}, noticed your work! We do websites + social media for real estate pros. Worth a quick chat?",
-    "{{username}} your listings look great! We help agents get more leads online. Open to connecting?",
-    "Hey {{username}}! We specialize in digital growth for property professionals in Delhi. Would love to help!",
-    "Hi {{username}}, do you use Instagram to get clients? We help real estate pros maximize it. Lets talk?",
-    "{{username}} - we help Delhi property agents build their brand online and attract buyers. Interested?",
-    "Hey {{username}}! Quick question - are you getting enough leads from social media? We can help with that.",
-    "Hi {{username}}! We work with Delhi real estate pros on digital marketing. Open to a quick conversation?",
-]
-
-# ── DETECTION VECTOR 3: Groq AI with uniqueness enforcement ───
-GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama3-8b-8192",
-    "llama-3.3-70b-versatile",
-    "gemma2-9b-it",
-]
-GROQ_STYLES = [
-    "casual and friendly", "professional and concise",
-    "curious and engaging", "warm and personal",
-    "brief and direct", "enthusiastic but not salesy",
-]
-
-# Track message hashes to ensure uniqueness (counter fingerprinting)
-_sent_hashes = set()
-
-def unique_message(msg):
-    """Ensure no two sent messages share more than 60% similarity"""
-    h = hashlib.md5(msg[:50].encode()).hexdigest()
-    if h in _sent_hashes:
-        return False
-    _sent_hashes.add(h)
-    return True
-
-def groq_enhance(base_msg, username, attempt=0):
-    fallback = random.choice(MESSAGE_VARIANTS).replace("{{username}}", f"@{username}")
-    if not GROQ_KEY:
-        return fallback
-    for model in GROQ_MODELS:
-        try:
-            style = GROQ_STYLES[attempt % len(GROQ_STYLES)]
-            # DETECTION VECTOR 3: Instruct AI to make each message unique
-            prompt = (
-                f"Rewrite this Instagram DM in a completely unique {style} tone. "
-                f"IMPORTANT: Use different words and sentence structure each time. "
-                f"Max 180 chars. Address @{username} naturally (not formally). "
-                f"Do NOT start with 'Hey' or 'Hi' every time - vary the opening. "
-                f"Original: {base_msg}\n"
-                f"Return ONLY the rewritten message, nothing else."
-            )
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_KEY}", "Content-Type": "application/json"},
-                json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 150},
-                timeout=12
-            )
-            data = resp.json()
-            if "choices" in data and data["choices"]:
-                result = data["choices"][0]["message"]["content"].strip()
-                if len(result) >= 20:
-                    if unique_message(result):
-                        log(f"AI [{model.split('-')[0]}] ({style[:12]}): {result[:70]}")
-                        return result
-                    else:
-                        # Too similar to a previous message - try again
-                        if attempt < 3:
-                            return groq_enhance(base_msg, username, attempt + 1)
-            else:
-                err = data.get("error", {}).get("message", "")
-                if "decommissioned" in err or "not found" in err.lower():
-                    continue
-                break
-        except Exception as e:
-            log(f"Groq error: {e}", "warn")
-            break
-    return fallback
-
-# ── DETECTION VECTOR 1 & 2: Irregular human timing ────────────
-class HumanTimer:
-    """
-    Generates irregular delays that match human behavior patterns.
-    Humans speed up when engaged, slow down when distracted,
-    take random breaks, and are never perfectly consistent.
-    """
-    def __init__(self):
-        self.session_start   = time.time()
-        self.msgs_this_hour  = 0
-        self.last_msg_time   = time.time()
-        self.fatigue_factor  = 1.0  # increases over session (humans get tired/slower)
-
-    def wait_between_dms(self, dm_number):
-        """
-        Irregular delay between DMs:
-        - Base: 60-180s (safe for Instagram)
-        - Fatigue: slows down as session progresses
-        - Random spikes: occasional long pauses (phone calls, distractions)
-        - Never the same interval twice
-        """
-        base = random.uniform(60, 180)
-
-        # Fatigue - messages slow down over time
-        self.fatigue_factor = 1.0 + (dm_number * 0.08)
-        base *= self.fatigue_factor
-
-        # DETECTION VECTOR 1: Random spikes (15% chance of a long pause)
-        if random.random() < 0.15:
-            spike = random.uniform(120, 480)  # 2-8 min distraction
-            base += spike
-            log(f"Taking a break... ({base:.0f}s total)")
-        else:
-            log(f"Waiting {base:.0f}s before next DM")
-
-        time.sleep(base)
-        self.msgs_this_hour += 1
-        self.last_msg_time = time.time()
-
-    def wait_between_searches(self):
-        """Short irregular delay between keyword searches"""
-        t = random.uniform(4, 12)
-        # Occasional longer pause between search batches
-        if random.random() < 0.2:
-            t += random.uniform(15, 45)
-        time.sleep(t)
-
-    def hourly_check(self):
-        """
-        DETECTION VECTOR 1: Never exceed safe hourly rate.
-        Instagram safe limit: ~10-12 DMs/hour for an account under 6 months old.
-        """
-        elapsed_hours = (time.time() - self.session_start) / 3600
-        if elapsed_hours > 0 and self.msgs_this_hour / elapsed_hours > 10:
-            wait = random.uniform(1800, 3600)  # wait 30-60 min
-            log(f"Hourly rate limit reached - cooling down {wait/60:.0f} min...", "warn")
-            time.sleep(wait)
-            self.msgs_this_hour = 0
-
-    def pre_session_warmup(self):
-        """
-        DETECTION VECTOR 6: Simulate organic account behavior before DMing.
-        Browse feed, view profiles, wait - like a real user opening the app.
-        """
-        log("Warming up session (browsing before DMing)...")
-        warmup = random.uniform(15, 45)
-        time.sleep(warmup)
-
-# ── DETECTION VECTOR 4: Target quality filtering ──────────────
-def is_quality_target(cl, username):
-    """
-    Filter out accounts that look like bots or cold contacts.
-    Only DM accounts with some profile substance - reduces block/report rate.
-    """
-    try:
-        info = cl.user_info_by_username(username)
-        # Skip accounts with no posts
-        if info.media_count < 3:
-            return False
-        # Skip accounts with no bio (likely inactive/fake)
-        if not info.biography or len(info.biography) < 5:
-            return False
-        # Skip accounts following nobody (bot accounts)
-        if info.following_count < 10:
-            return False
-        # Skip private accounts (DM likely to be ignored)
-        # if info.is_private:
-        #     return False
-        return True
-    except:
-        return True  # default allow if we can't check
-
-# ── Persistence ────────────────────────────────────────────────
-def load_json_set(path):
-    os.makedirs("./data", exist_ok=True)
-    try:
-        if os.path.exists(path):
-            with open(path) as f:
-                data = json.load(f)
-                return set(data) if isinstance(data, list) else set(data.keys())
-    except: pass
-    return set()
-
-def save_json_set(path, s):
-    try:
-        os.makedirs("./data", exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(list(s), f)
-    except Exception as e:
-        log(f"Save error: {e}", "warn")
-
-def load_replies():
-    os.makedirs("./data", exist_ok=True)
-    try:
-        if os.path.exists(REPLIES_FILE):
-            with open(REPLIES_FILE) as f:
-                return json.load(f)
-    except: pass
-    return {}
-
-def save_replies(d):
-    try:
-        with open(REPLIES_FILE, "w") as f:
-            json.dump(d, f, indent=2)
-    except: pass
-
-def load_stats():
-    try:
-        if os.path.exists(STATS_FILE):
-            with open(STATS_FILE) as f:
-                return json.load(f)
-    except: pass
-    return {"total_sent": 0, "total_replies": 0, "sessions": 0, "last_run": None}
-
-def save_stats(s):
-    try:
-        with open(STATS_FILE, "w") as f:
-            json.dump(s, f, indent=2)
-    except: pass
-
-# ── DETECTION VECTOR 1: Session cooldown enforcement ──────────
-def check_daily_limit(stats):
-    """Never send more than 30 DMs per day total across all sessions"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    today_count = stats.get(f"sent_{today}", 0)
-    if today_count >= 30:
-        log(f"Daily limit reached ({today_count}/30). Run again tomorrow.", "warn")
-        return False, today_count
-    remaining = 30 - today_count
-    log(f"Daily progress: {today_count}/30 DMs sent today. {remaining} remaining.")
-    return True, today_count
-
-# ── Login / session ────────────────────────────────────────────
-# DETECTION VECTOR 5: Rotate between multiple realistic Indian Android devices
-# Same account always uses same device (fingerprint must be CONSISTENT per session)
-DEVICE_POOL = [
-    {   # Samsung Galaxy S21 - most common in India 2023-24
-        "app_version": "296.0.0.35.109",
-        "android_version": 31,
-        "android_release": "12.0.0",
-        "dpi": "480dpi",
-        "resolution": "1080x2400",
-        "manufacturer": "samsung",
-        "device": "SM-G991B",
-        "model": "Samsung Galaxy S21",
-        "cpu": "exynos2100",
-        "version_code": "514340314",
-    },
-    {   # Redmi Note 10 Pro - extremely common India budget phone
-        "app_version": "296.0.0.35.109",
-        "android_version": 30,
-        "android_release": "11.0.0",
-        "dpi": "395dpi",
-        "resolution": "1080x2400",
-        "manufacturer": "Xiaomi",
-        "device": "sweetin",
-        "model": "M2101K6P",
-        "cpu": "qcom",
-        "version_code": "514340314",
-    },
-    {   # OnePlus Nord CE 2 - popular India mid-range
-        "app_version": "296.0.0.35.109",
-        "android_version": 31,
-        "android_release": "12.0.0",
-        "dpi": "410dpi",
-        "resolution": "1080x2412",
-        "manufacturer": "OnePlus",
-        "device": "IV2201",
-        "model": "IV2201",
-        "cpu": "qcom",
-        "version_code": "514340314",
-    },
-    {   # Realme 9 Pro+ - common India phone
-        "app_version": "296.0.0.35.109",
-        "android_version": 31,
-        "android_release": "12.0.0",
-        "dpi": "452dpi",
-        "resolution": "1080x2400",
-        "manufacturer": "realme",
-        "device": "RMX3393",
-        "model": "RMX3393",
-        "cpu": "qcom",
-        "version_code": "514340314",
-    },
-]
-
-def get_device_for_account():
-    """Always return the same device for this account (consistent fingerprint)"""
-    # Derive device index from account ID hash - same account = same device always
-    idx = int(hashlib.md5(ACCOUNT_ID.encode()).hexdigest(), 16) % len(DEVICE_POOL)
-    return DEVICE_POOL[idx]
-
 def make_client():
     cl = Client()
     device = get_device_for_account()
@@ -520,7 +175,7 @@ def get_client():
         log("Loading saved session...")
         try:
             cl.load_settings(SESSION_FILE)
-            cl.login(IG_USERNAME, IG_PASSWORD)
+            cl.login(LOGIN_ID, IG_PASSWORD)
             info = cl.account_info()
             log(f"Session restored: @{info.username}", "success")
             return cl
@@ -529,9 +184,17 @@ def get_client():
             try: os.remove(SESSION_FILE)
             except: pass
 
+    # Normalize username (remove @ if present, lowercase, strip spaces)
+    clean_user = IG_USERNAME.strip().lstrip("@").lower()
+    if clean_user != IG_USERNAME:
+        log(f"Username normalized: {IG_USERNAME} -> {clean_user}", "warn")
+
     # Fresh login — try with different proxies on each attempt
     last_err = None
     proxies_tried = set()
+
+    # Also try login with email if IG_EMAIL env var is set
+    IG_EMAIL = os.environ.get("IG_EMAIL", "").strip()
 
     for attempt in range(1, 6):  # up to 5 attempts
         log(f"Login attempt {attempt}/5 as @{IG_USERNAME}...")
@@ -539,23 +202,30 @@ def get_client():
         try:
             cl2 = make_client()
 
-            # On attempt 2+, always try a fresh proxy
-            if attempt >= 2:
-                # First try IG_PROXY env var if set
-                env_proxy = get_proxy()
-                if env_proxy and env_proxy not in proxies_tried:
-                    apply_proxy(cl2, env_proxy)
-                    proxies_tried.add(env_proxy)
-                else:
-                    # Fetch a new free proxy
-                    free_p = get_free_proxy()
-                    if free_p and free_p not in proxies_tried:
-                        apply_proxy(cl2, free_p)
-                        proxies_tried.add(free_p)
-                    else:
-                        log(f"No new proxy available for attempt {attempt} - trying direct...", "warn")
+            # Proxy selection per attempt
+            if attempt == 1:
+                # First attempt: use Webshare directly
+                proxy = get_proxy()
+                if proxy:
+                    apply_proxy(cl2, proxy)
+                    proxies_tried.add(proxy)
+            elif attempt == 2:
+                # Second attempt: Webshare with port 8080 explicitly
+                ws = get_webshare_proxy()
+                if ws and ws not in proxies_tried:
+                    apply_proxy(cl2, ws)
+                    proxies_tried.add(ws)
+            else:
+                # Further attempts: try free proxies
+                free_p = get_free_proxy()
+                if free_p and free_p not in proxies_tried:
+                    apply_proxy(cl2, free_p)
+                    proxies_tried.add(free_p)
 
-            cl2.login(IG_USERNAME, IG_PASSWORD)
+            # Try email login on even attempts (more reliable through proxies)
+            login_id = IG_EMAIL if (attempt % 2 == 0 and IG_EMAIL) else IG_USERNAME
+            log(f"Logging in as: {login_id[:4]}***")
+            cl2.login(login_id, IG_PASSWORD)
             cl2.dump_settings(SESSION_FILE)
             info = cl2.account_info()
             log(f"Logged in: @{info.username}", "success")
@@ -569,16 +239,20 @@ def get_client():
             sys.exit(1)
         except Exception as e:
             last_err = str(e)
-            is_ip_block = "Expecting value" in last_err or "JSONDecodeError" in last_err or "SSLError" in last_err
-            is_challenge = "checkpoint" in last_err.lower() or "challenge" in last_err.lower()
+            is_ip_block  = "Expecting value" in last_err or "JSONDecodeError" in last_err or "SSLError" in last_err or "ProxyError" in last_err
+            is_not_found = "can't find" in last_err.lower() or "not found" in last_err.lower()
+            is_challenge  = "checkpoint" in last_err.lower() or "challenge" in last_err.lower()
 
             if is_challenge:
                 log("Challenge detected - approve in Instagram app, retry in 10 mins", "error")
                 sys.exit(1)
+            elif is_not_found:
+                log(f"Attempt {attempt}: Account not found via this proxy - trying different proxy...", "warn")
+                time.sleep(random.uniform(10, 20))
             elif is_ip_block:
-                log(f"Attempt {attempt}: IP blocked by Instagram - switching proxy...", "warn")
+                log(f"Attempt {attempt}: Proxy error - switching proxy...", "warn")
                 if attempt < 5:
-                    time.sleep(random.uniform(20, 45))  # short wait then new proxy
+                    time.sleep(random.uniform(15, 30))
             else:
                 log(f"Attempt {attempt} failed: {last_err[:100]}", "warn")
                 time.sleep(30 * min(attempt, 3))
