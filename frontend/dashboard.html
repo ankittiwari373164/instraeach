@@ -798,17 +798,36 @@ function doLogout() {
 
 async function bootApp() {
   hideLogin();
+  // First verify token is still valid (catches DB resets / redeployments)
+  try {
+    await api('/api/stats');
+  } catch(e) {
+    if (e.status === 401 || e.status === 403) {
+      TOKEN = null;
+      localStorage.removeItem('ir_token');
+      showLogin();
+      const err = document.getElementById('login-error');
+      err.textContent = 'Session expired - please log in again (server was redeployed)';
+      err.style.display = 'block';
+      return;
+    }
+  }
   try {
     await loadStats();
     await loadAccounts();
-  await loadImages();
+    await loadImages();
     await loadCampaigns();
     loadLogs();
     startPolling();
-    // If user is already on script tab when data loads, generate now
     if (currentTab === 'script') _doScriptTab();
   } catch(e) {
-    if (e.status === 401) doLogout();
+    if (e.status === 401 || e.status === 403) {
+      TOKEN = null;
+      localStorage.removeItem('ir_token');
+      showLogin();
+    } else {
+      console.error('Boot error:', e.message);
+    }
   }
 }
 

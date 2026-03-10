@@ -14,7 +14,9 @@ const https = require('https');
 
 const app        = express();
 const PORT       = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET';
+// JWT_SECRET must be set in Render env vars for tokens to survive redeployments
+// If not set, tokens break on every redeploy (causes "Loading..." stuck UI)
+const JWT_SECRET = process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || 'instraeach_default_secret_2024';
 const GROQ_KEY   = process.env.GROQ_API_KEY || '';
 
 // ── Uploads dir ──────────────────────────────────────────────────
@@ -592,6 +594,7 @@ initDb().then(async db => {
       IG_PASSWORD   : igPass,
       CAMPAIGN_DATA : campData,
       SESSION_FILE  : './data/ig_session.json',
+      RENDER        : '1',  // tells worker.py it's on a datacenter - enables proxy auto-fetch
     };
 
     botLog(`=== Bot starting: ${campaign.name} ===`, 'info', account_id, campaign.id);
