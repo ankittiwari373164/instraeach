@@ -25,7 +25,7 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json({ limit: '20mb' }));
 
 // ── Serve frontend ────────────────────────────────────────────────
-const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+const FRONTEND_DIR = path.join(__dirname, 'frontend');
 if (fs.existsSync(FRONTEND_DIR)) {
   app.use(express.static(FRONTEND_DIR));
   app.get('/',          (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'dashboard.html')));
