@@ -139,6 +139,13 @@ async function launchBrowser() {
     '--disable-default-apps',
     '--window-size=1280,800',
     '--lang=en-IN',
+    '--disable-gpu',
+    '--disable-web-security',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--allow-running-insecure-content',
+    '--disable-extensions',
+    '--ignore-certificate-errors',
+    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   ];
 
   const launchOpts = {
@@ -199,7 +206,44 @@ async function doLogin(browser) {
   const page = context.pages()[0] || await context.newPage();
   await applyStealthPatches(page);
 
-  await page.goto('https://www.instagram.com/accounts/login/', { waitUntil:'domcontentloaded', timeout:60000 });
+  // Try loading Instagram login page with retries
+  let pageLoaded = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      log(`Loading Instagram login page (attempt ${attempt}/3)...`);
+      await page.goto('https://www.instagram.com/accounts/login/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 90000
+      });
+      // Wait for either the username input or any input to appear
+      await page.waitForSelector('input[name="username"], input[type="text"], form', {
+        timeout: 30000
+      });
+      pageLoaded = true;
+      break;
+    } catch(e) {
+      log(`Login page load attempt ${attempt} failed: ${e.message.slice(0,80)}`, 'warn');
+      if (attempt < 3) {
+        await humanSleep(5000, 8000);
+        // Try alternative URL on retry
+        try {
+          await page.goto('https://www.instagram.com/', { waitUntil:'domcontentloaded', timeout:60000 });
+          await humanSleep(3000, 5000);
+          await page.goto('https://www.instagram.com/accounts/login/', { waitUntil:'domcontentloaded', timeout:60000 });
+          await page.waitForSelector('input[name="username"]', { timeout:20000 });
+          pageLoaded = true;
+          break;
+        } catch {}
+      }
+    }
+  }
+
+  if (!pageLoaded) {
+    log('Could not load Instagram login page after 3 attempts. Instagram may be blocking this IP. Try setting IG_PROXY.', 'error');
+    await context.close();
+    return null;
+  }
+
   await humanSleep(2000, 4000);
 
   // Accept cookies if shown
