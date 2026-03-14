@@ -96,6 +96,24 @@ function initDb() {
         CREATE INDEX IF NOT EXISTS idx_processed_acct  ON processed_accounts(account_id);
       `);
 
+      // ── Migrations: safely add columns that may be missing in older DBs ──
+      const migrations = [
+        `ALTER TABLE campaigns ADD COLUMN cooldown_ms        INTEGER DEFAULT 15000`,
+        `ALTER TABLE campaigns ADD COLUMN scrape_depth       INTEGER DEFAULT 1`,
+        `ALTER TABLE campaigns ADD COLUMN dm_from_search     INTEGER DEFAULT 1`,
+        `ALTER TABLE campaigns ADD COLUMN dm_from_followers  INTEGER DEFAULT 1`,
+        `ALTER TABLE campaigns ADD COLUMN skip_private       INTEGER DEFAULT 1`,
+        `ALTER TABLE campaigns ADD COLUMN skip_dmed          INTEGER DEFAULT 1`,
+        `ALTER TABLE campaigns ADD COLUMN use_ai_enhance     INTEGER DEFAULT 0`,
+        `ALTER TABLE campaigns ADD COLUMN image_url          TEXT    DEFAULT ''`,
+        `ALTER TABLE accounts  ADD COLUMN cooldown_ms        INTEGER DEFAULT 8000`,
+        `ALTER TABLE accounts  ADD COLUMN daily_limit        INTEGER DEFAULT 150`,
+      ];
+
+      for (const sql of migrations) {
+        try { db.exec(sql); } catch (e) { /* column already exists — skip */ }
+      }
+
       console.log('[InstaReach] Database ready:', DB_PATH);
       resolve(db);
     } catch(err) {
