@@ -623,6 +623,7 @@ code { background: rgba(196,77,255,0.12); color: var(--accent); padding: 1px 6px
       </div>
     </div>
 
+<<<<<<< HEAD
     <!-- ─── TAB: PLAYWRIGHT BOT CONFIG ───────────────── -->
     <div class="tab-content" id="tab-script">
       <div class="card" style="margin-bottom:16px">
@@ -687,6 +688,32 @@ PORT=3001
 
 # ── BOT STARTS FROM CAMPAIGNS TAB → Run Bot ───
 # No Tampermonkey. No browser extension. Pure Node.js.</div>
+=======
+    <!-- ─── TAB: SCRIPT CONFIG ─────────────────────────── -->
+    <div class="tab-content" id="tab-script">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Tampermonkey Script Generator</div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-group">
+              <label class="label">Select Campaign</label>
+              <select class="select" id="script-campaign" onchange="generateScript()"><option value="">— Select Campaign —</option></select>
+            </div>
+            <div class="form-group">
+              <label class="label">Dashboard API URL</label>
+              <input class="input" id="script-api-url" placeholder="https://your-backend.com" oninput="generateScript()">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="copyScript()">📋 Copy Script</button>
+            <button class="btn btn-outline" onclick="downloadScript()">⬇ Download .js</button>
+            <button class="btn btn-outline" onclick="generateScript()" style="margin-left:auto">↻ Regenerate</button>
+          </div>
+          <div id="script-status" style="font-size:12px;color:var(--success);margin-bottom:10px;display:none;font-family:'JetBrains Mono',monospace"></div>
+          <div class="script-box" id="script-output"></div>
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
         </div>
       </div>
     </div>
@@ -708,17 +735,30 @@ PORT=3001
           <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Deploy to Railway / Render / VPS</h4><p>Railway (railway.app): Connect GitHub repo → Deploy. Set environment variables in the Railway dashboard. Get your public URL.</p></div></div>
           <div class="step"><div class="step-num">4</div><div class="step-body"><h4>Host the Dashboard</h4><p>Open <code>frontend/dashboard.html</code> → Set the API_URL variable at the top to your backend URL. Deploy to Netlify, Vercel, or GitHub Pages.</p></div></div>
           <div class="divider"></div>
+<<<<<<< HEAD
           <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 2 — Playwright Bot Setup</div>
           <div class="step"><div class="step-num">5</div><div class="step-body"><h4>Install Playwright Browser</h4><p>Run: <code>npm install</code> then <code>npx playwright install chromium</code> — this downloads the Chromium browser used by the bot (~150MB, one-time).</p></div></div>
           <div class="step"><div class="step-num">6</div><div class="step-body"><h4>Add Your Instagram Account</h4><p>In the dashboard, go to <strong>Accounts → Add Account</strong>. Set your Instagram username. The <code>session_id</code> field can be left blank — Playwright will auto-login using <code>IG_PASSWORD</code> from your .env and save the session to disk.</p></div></div>
           <div class="step"><div class="step-num">7</div><div class="step-body"><h4>Create a Campaign</h4><p>Go to <strong>New Campaign</strong> → fill in all fields → click Create Campaign. The campaign starts immediately.</p></div></div>
           <div class="step"><div class="step-num">8</div><div class="step-body"><h4>Run the Bot</h4><p>Go to <strong>Campaigns tab</strong> → click <strong>🤖 Run Bot</strong>. The Playwright bot launches a hidden Chromium browser on your server, logs into Instagram, searches targets, and sends DMs — all automatically. No browser extension needed.</p></div></div>
+=======
+          <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 2 — Tampermonkey Setup</div>
+          <div class="step"><div class="step-num">5</div><div class="step-body"><h4>Install Tampermonkey</h4><p>Install the Tampermonkey browser extension from the Chrome Web Store or Firefox Add-ons. Use Chrome for best compatibility.</p></div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-body"><h4>Add Your Instagram Account</h4><p>In the dashboard, go to Accounts → add your Instagram account. To get the <code>sessionid</code>: log into Instagram in Chrome → F12 → Application → Cookies → instagram.com → find <code>sessionid</code> → copy value.</p></div></div>
+          <div class="step"><div class="step-num">7</div><div class="step-body"><h4>Create a Campaign</h4><p>Go to New Campaign → fill in all fields → click Create Campaign. Note the campaign ID from the Campaigns tab.</p></div></div>
+          <div class="step"><div class="step-num">8</div><div class="step-body"><h4>Generate & Install Script</h4><p>Go to Script Config → select your campaign → enter your backend URL → copy the generated script. In Tampermonkey: click icon → Create New Script → paste → Save (Ctrl+S).</p></div></div>
+          <div class="step"><div class="step-num">9</div><div class="step-body"><h4>Start the Bot (Two Options)</h4><p><strong>Option A — Server Bot (24/7, recommended):</strong> Go to Campaigns tab, click <strong>🤖 Run Bot</strong>. The bot runs on your Render server — no browser needed, works even when your PC is off.</p><p><strong>Option B — Tampermonkey:</strong> Open Instagram in browser with Tampermonkey installed. Runs while your browser is open.</p></div></div>
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
           <div class="divider"></div>
           <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 3 — UptimeRobot (24/7 Keepalive)</div>
           <div class="step"><div class="step-num">10</div><div class="step-body"><h4>Create Free Account</h4><p>Sign up at <code>uptimerobot.com</code> (free plan gives you 50 monitors with 5-min intervals).</p></div></div>
           <div class="step"><div class="step-num">11</div><div class="step-body"><h4>Add HTTP Monitor</h4><p>Click Add New Monitor → Type: HTTP(S) → Friendly Name: InstaReach → URL: your backend <code>/ping</code> endpoint → Monitoring Interval: 5 minutes → Create Monitor.</p></div></div>
           <div class="step"><div class="step-num">12</div><div class="step-body"><h4>Set Up Alerts</h4><p>Add email or Telegram notifications so you're alerted if the backend goes down. Telegram alerts are instant and free.</p></div></div>
+<<<<<<< HEAD
           <div class="step"><div class="step-num">13</div><div class="step-body"><h4>Keep Bot Running 24/7</h4><p>UptimeRobot keeps your backend alive. The Playwright bot runs headlessly on the server — no browser window, no PC needed. Deploy on Railway, Render, or a VPS for true 24/7 operation. Use the cron endpoint (<code>/api/bot/run?key=CRON_KEY</code>) to auto-schedule runs every 2-3 hours.</p></div></div>
+=======
+          <div class="step"><div class="step-num">13</div><div class="step-body"><h4>Keep Browser Running 24/7</h4><p>UptimeRobot keeps your backend alive. For the browser (Tampermonkey) to run 24/7, leave the PC/Mac running with the Instagram tab open. Disable screen sleep. Alternatively use a cheap VPS with a real browser via <code>Xvfb</code> + Chrome.</p></div></div>
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
           <div class="warn-box" style="margin-top:8px">
             <strong>⚠ Safety Limits:</strong> Max 150 DMs/day per account · Always use random delays (8-15s) · Warm up new accounts gradually (30/day for first week) · Never use the exact same message across all accounts · Do not DM verified accounts or accounts with 100k+ followers — Instagram flags this pattern.
           </div>
@@ -892,8 +932,13 @@ const TAB_META = {
   'accounts':     { title: 'Accounts',         sub: 'Manage your Instagram accounts' },
   'new-campaign': { title: 'New Campaign',     sub: 'Set up targeting, message and launch' },
   'campaigns':    { title: 'Campaigns',        sub: 'Monitor and control running campaigns' },
+<<<<<<< HEAD
   'logs':         { title: 'Live Logs',        sub: 'Real-time activity from Playwright bot' },
   'script':       { title: 'Bot Config',       sub: 'Playwright server-side bot settings' },
+=======
+  'logs':         { title: 'Live Logs',        sub: 'Real-time activity from Tampermonkey' },
+  'script':       { title: 'Script Config',    sub: 'Generate Tampermonkey automation script' },
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
   'uptime':       { title: 'UptimeRobot Setup', sub: 'Keep your automation running 24/7' },
   'images':       { title: 'Image Library',     sub: 'Upload and manage images to send with DMs' },
 };
@@ -1257,6 +1302,7 @@ async function loadDashLogs() {
 function clearLogsView() { document.getElementById('logs-terminal').innerHTML = ''; }
 
 // ═══════════════════════════════════════════════════════════════
+<<<<<<< HEAD
 // PLAYWRIGHT BOT CONFIG TAB
 // ═══════════════════════════════════════════════════════════════
 
@@ -1279,6 +1325,14 @@ async function clearPlaywrightSession() {
 }
 
 // Stubs to avoid errors if old tab JS is called
+=======
+// SCRIPT GENERATOR
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// SCRIPT TAB — generate Tampermonkey script from campaign data
+// ═══════════════════════════════════════════════════════════════
+
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
 function _doScriptTab() {
   // Rebuild dropdown from cache
   var sel = document.getElementById('script-campaign');
@@ -1621,8 +1675,58 @@ function buildScript(camp, acc, apiUrl) {
 }
 
 
+<<<<<<< HEAD
 function copyScript() { /* No-op: Playwright mode uses server env vars, not browser scripts */ }
 function downloadScript() { /* No-op: Playwright mode uses server env vars, not browser scripts */ }
+=======
+function copyScript() {
+  const text = document.getElementById('script-output').textContent;
+  const status = document.getElementById('script-status');
+  // Script is valid if it starts with the userscript header
+  if (!text.trim().startsWith('// ==UserScript==')) {
+    // Try regenerating first
+    generateScript();
+    const text2 = document.getElementById('script-output').textContent;
+    if (!text2.trim().startsWith('// ==UserScript==')) {
+      if (status) { status.style.color='var(--danger)'; status.textContent='⚠ Script not ready — select a campaign and check API URL.'; status.style.display='block'; }
+      return;
+    }
+    navigator.clipboard.writeText(text2).then(() => {
+      if (status) { status.style.color='var(--success)'; status.textContent='✓ Script copied to clipboard! Paste into Tampermonkey → New Script.'; status.style.display='block'; setTimeout(()=>status.style.display='none', 5000); }
+    });
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    if (status) { status.style.color='var(--success)'; status.textContent='✓ Script copied! Go to Tampermonkey → Create New Script → paste → Ctrl+S'; status.style.display='block'; setTimeout(()=>status.style.display='none', 6000); }
+  }).catch(() => {
+    // Clipboard API failed (e.g. file:// protocol) — select all text as fallback
+    const box = document.getElementById('script-output');
+    const range = document.createRange(); range.selectNodeContents(box);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+    if (status) { status.style.color='var(--warn)'; status.textContent='⚠ Auto-copy failed — text is selected, press Ctrl+C manually.'; status.style.display='block'; }
+  });
+}
+
+function downloadScript() {
+  // Ensure script is generated
+  generateScript();
+  const text = document.getElementById('script-output').textContent;
+  const status = document.getElementById('script-status');
+  if (!text.trim().startsWith('// ==UserScript==')) {
+    if (status) { status.style.color='var(--danger)'; status.textContent='⚠ Script not ready — select a campaign first.'; status.style.display='block'; }
+    return;
+  }
+  const campSel = document.getElementById('script-campaign');
+  const campName = campSel.options[campSel.selectedIndex]?.text || 'instraeach';
+  const safeName = campName.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const blob = new Blob([text], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = safeName + '.user.js';
+  a.click();
+  if (status) { status.style.color='var(--success)'; status.textContent='✓ Script downloaded! Drag the .js file onto the Tampermonkey extension icon to install.'; status.style.display='block'; setTimeout(()=>status.style.display='none', 6000); }
+}
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
 
 // ═══════════════════════════════════════════════════════════════
 // POLLING
@@ -1668,7 +1772,11 @@ function renderImagesGrid() {
 
 function copyImageUrl(url) {
   navigator.clipboard.writeText(API_URL + url);
+<<<<<<< HEAD
   alert('Image URL copied! You can use it in your campaign DM_MESSAGE as a direct link.');
+=======
+  alert('Image URL copied! Paste it into the Tampermonkey script CFG.imageUrl field.');
+>>>>>>> 8fcd91f157736180c4327fbb0c40d9daf2cada5a
 }
 
 async function deleteImage(filename) {
