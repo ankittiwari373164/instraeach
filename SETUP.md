@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InstaReach — DM Automation</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #08080f;
+  --surface: #0f0f18;
+  --card: #14141e;
+  --card2: #1a1a28;
+  --border: #252535;
+  --border2: #2f2f45;
+  --accent: #c44dff;
+  --accent2: #6c3fff;
+  --accent3: #00d4ff;
+  --text: #eeeef8;
+  --muted: #5a5a7a;
+  --muted2: #8888aa;
+  --success: #00e676;
+  --warn: #ffab40;
+  --danger: #ff5252;
+  --info: #40c4ff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: 'Syne', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 600px 400px at 80% -10%, rgba(196,77,255,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 400px at -10% 80%, rgba(108,63,255,0.05) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Layout ───────────────────────────────────────────────── */
+.layout { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.sidebar-top {
+  padding: 22px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+}
+.logo-mark {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.logo-text { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.sidebar-nav { flex: 1; padding: 12px 10px; overflow-y: auto; }
+.nav-section { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); padding: 14px 10px 6px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 8px;
+  cursor: pointer; color: var(--muted2);
+  font-size: 13px; font-weight: 600;
+  transition: all 0.15s; border: 1px solid transparent;
+  margin-bottom: 2px;
+}
+.nav-item:hover { background: var(--card); color: var(--text); }
+.nav-item.active {
+  background: rgba(196,77,255,0.1);
+  border-color: rgba(196,77,255,0.2);
+  color: #c44dff;
+}
+.nav-icon { width: 18px; text-align: center; font-size: 14px; }
+.nav-badge { margin-left: auto; background: var(--accent); color: white; font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; }
+.sidebar-bottom {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.bot-status {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.bot-status-row { display: flex; align-items: center; gap: 7px; color: var(--muted2); margin-bottom: 4px; }
+.bot-status-row:last-child { margin-bottom: 0; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot-green { background: var(--success); animation: blink 2s infinite; }
+.dot-gray { background: var(--muted); }
+.dot-yellow { background: var(--warn); animation: blink 1.5s infinite; }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+/* ── Main ─────────────────────────────────────────────────── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(8,8,15,0.9);
+  backdrop-filter: blur(20px);
+  flex-shrink: 0;
+}
+.topbar-left h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+.topbar-left p { font-size: 12px; color: var(--muted2); margin-top: 1px; }
+.topbar-right { display: flex; gap: 10px; align-items: center; }
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 8px; border: none;
+  font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s; text-decoration: none;
+}
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; box-shadow: 0 4px 16px rgba(196,77,255,0.25); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(196,77,255,0.4); }
+.btn-outline { background: transparent; color: var(--muted2); border: 1px solid var(--border2); }
+.btn-outline:hover { color: var(--text); border-color: var(--accent); }
+.btn-ghost { background: transparent; color: var(--muted2); padding: 6px 10px; }
+.btn-ghost:hover { color: var(--text); }
+.btn-danger { background: rgba(255,82,82,0.1); color: var(--danger); border: 1px solid rgba(255,82,82,0.2); }
+.btn-danger:hover { background: rgba(255,82,82,0.2); }
+.btn-success { background: rgba(0,230,118,0.1); color: var(--success); border: 1px solid rgba(0,230,118,0.2); }
+.btn-warn { background: rgba(255,171,64,0.1); color: var(--warn); border: 1px solid rgba(255,171,64,0.2); }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+
+/* ── Tabs (content area) ──────────────────────────────────── */
+.tab-content { flex: 1; overflow-y: auto; padding: 24px 28px; display: none; }
+.tab-content.active { display: block; }
+
+/* ── Stats Cards ──────────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+.stat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px 20px; position: relative; overflow: hidden;
+}
+.stat-card::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.stat-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); margin-bottom: 10px; }
+.stat-value { font-size: 28px; font-weight: 800; font-family: 'JetBrains Mono', monospace; letter-spacing: -1px; }
+.stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* ── Card ─────────────────────────────────────────────────── */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-size: 14px; font-weight: 700; }
+.card-body { padding: 20px; }
+
+/* ── Forms ────────────────────────────────────────────────── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.form-group { display: flex; flex-direction: column; gap: 7px; }
+.form-group.full { grid-column: 1/-1; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--muted2); text-transform: uppercase; }
+.input, .select, .textarea {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 10px 13px;
+  color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s; width: 100%;
+}
+.input:focus, .select:focus, .textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(196,77,255,0.1);
+}
+.select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a5a7a'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+.textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+.hint { font-size: 11px; color: var(--muted); margin-top: -4px; }
+
+/* ── Toggle ───────────────────────────────────────────────── */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.toggle-row:last-child { border-bottom: none; }
+.toggle-info .toggle-name { font-size: 13px; font-weight: 600; }
+.toggle-info .toggle-desc { font-size: 11px; color: var(--muted2); margin-top: 2px; }
+.toggle { position: relative; width: 40px; height: 22px; cursor: pointer; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; background: var(--border2); border-radius: 22px; transition: 0.2s; }
+.toggle input:checked + .toggle-track { background: var(--accent); }
+.toggle-thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: 0.2s; }
+.toggle input:checked ~ .toggle-thumb { transform: translateX(18px); }
+
+/* ── Tags ─────────────────────────────────────────────────── */
+.tag-input-wrap { display: flex; flex-wrap: wrap; gap: 6px; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; padding: 8px; min-height: 42px; cursor: text; }
+.tag-input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(196,77,255,0.1); }
+.tag-input-wrap input { background: transparent; border: none; outline: none; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px; flex: 1; min-width: 80px; }
+.tag { display: inline-flex; align-items: center; gap: 5px; background: rgba(196,77,255,0.12); border: 1px solid rgba(196,77,255,0.25); color: var(--accent); padding: 3px 9px; border-radius: 14px; font-size: 11px; font-weight: 600; }
+.tag-x { cursor: pointer; opacity: 0.7; font-size: 12px; line-height: 1; }
+.tag-x:hover { opacity: 1; }
+
+/* ── Table ────────────────────────────────────────────────── */
+.table { width: 100%; border-collapse: collapse; }
+.table th { padding: 10px 14px; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); text-align: left; }
+.table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: rgba(255,255,255,0.02); }
+.table-empty { text-align: center; padding: 48px; color: var(--muted2); font-size: 14px; }
+
+/* ── Status Pills ─────────────────────────────────────────── */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.pill-running { background: rgba(0,230,118,0.1); color: var(--success); border: 1px solid rgba(0,230,118,0.2); }
+.pill-paused  { background: rgba(255,171,64,0.1); color: var(--warn);    border: 1px solid rgba(255,171,64,0.2); }
+.pill-pending { background: rgba(64,196,255,0.1); color: var(--info);    border: 1px solid rgba(64,196,255,0.2); }
+.pill-done    { background: rgba(90,90,122,0.2);  color: var(--muted2);  border: 1px solid var(--border); }
+.pill-stopped { background: rgba(255,82,82,0.1);  color: var(--danger);  border: 1px solid rgba(255,82,82,0.2); }
+.pill-idle    { background: rgba(90,90,122,0.1);  color: var(--muted2);  border: 1px solid var(--border); }
+
+/* ── Progress ─────────────────────────────────────────────── */
+.progress { height: 5px; background: var(--border); border-radius: 4px; overflow: hidden; min-width: 80px; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.4s; }
+
+/* ── Terminal / Log ───────────────────────────────────────── */
+.terminal {
+  background: #0a0a12; border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+  line-height: 1.9; overflow-y: auto; color: #7a7a9a;
+}
+.terminal:empty::before { content: 'No logs yet. Start a campaign and activity will appear here.'; color: var(--muted); }
+.log-entry { display: flex; gap: 8px; }
+.log-time { color: var(--muted); flex-shrink: 0; }
+.log-lvl-success .log-msg { color: var(--success); }
+.log-lvl-info .log-msg { color: var(--info); }
+.log-lvl-warn .log-msg { color: var(--warn); }
+.log-lvl-error .log-msg { color: var(--danger); }
+
+/* ── Login Screen ─────────────────────────────────────────── */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.login-box {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 18px; padding: 40px; width: 360px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+}
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo .logo-mark { margin: 0 auto 12px; width: 48px; height: 48px; border-radius: 14px; font-size: 22px; }
+.login-logo h1 { font-size: 22px; font-weight: 800; }
+.login-logo p { font-size: 13px; color: var(--muted2); margin-top: 4px; }
+.login-error { background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.25); color: var(--danger); padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; display: none; }
+
+/* ── Empty State ──────────────────────────────────────────── */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted2); }
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+.empty-state h3 { font-size: 16px; font-weight: 700; color: var(--muted2); margin-bottom: 6px; }
+.empty-state p { font-size: 13px; color: var(--muted); }
+
+/* ── Alert ────────────────────────────────────────────────── */
+.alert { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.alert-success { background: rgba(0,230,118,0.1); border: 1px solid rgba(0,230,118,0.25); color: var(--success); }
+.alert-error   { background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.25); color: var(--danger); }
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+/* ── Script box ───────────────────────────────────────────── */
+.script-box { background: #0a0a12; border: 1px solid var(--border); border-radius: 10px; padding: 18px; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.8; color: #8888aa; white-space: pre; overflow-x: auto; max-height: 500px; overflow-y: auto; }
+
+/* ── Account avatar ───────────────────────────────────────── */
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: white; flex-shrink: 0; }
+
+/* ── Divider ──────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+/* ── Step guide ───────────────────────────────────────────── */
+.step { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+.step-num { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex-shrink: 0; }
+.step-body h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.step-body p { font-size: 12px; color: var(--muted2); line-height: 1.7; }
+code { background: rgba(196,77,255,0.12); color: var(--accent); padding: 1px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* ── Grid layouts ─────────────────────────────────────────── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* ── Uptime stat ──────────────────────────────────────────── */
+.uptime-stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.uptime-stat-val { font-size: 26px; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--accent3); }
+.uptime-stat-label { font-size: 11px; color: var(--muted2); margin-top: 4px; }
+
+/* Warning box */
+.warn-box { background: rgba(255,171,64,0.07); border: 1px solid rgba(255,171,64,0.2); border-radius: 10px; padding: 14px 16px; font-size: 12px; color: var(--muted2); line-height: 1.8; }
+.warn-box strong { color: var(--warn); }
+
+/* Log filter bar */
+.log-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+.log-toolbar .select { width: auto; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     LOGIN OVERLAY
+════════════════════════════════════════════════════════════ -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="logo-mark">📲</div>
+      <h1>InstaReach</h1>
+      <p>DM Automation Dashboard</p>
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="label">Username</label>
+      <input class="input" id="l-user" placeholder="admin" />
+    </div>
+    <div class="form-group" style="margin-bottom:20px">
+      <label class="label">Password</label>
+      <input class="input" type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Sign In</button>
+    <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--muted)">
+      Backend URL: <code id="api-url-show"></code>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MAIN LAYOUT
+════════════════════════════════════════════════════════════ -->
+<div class="layout" id="app" style="display:none">
+
+  <nav class="sidebar">
+    <div class="sidebar-top">
+      <div class="logo">
+        <div class="logo-mark">📲</div>
+        <span class="logo-text">InstaReach</span>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item active" data-tab="dashboard" onclick="goTab(this)"><span class="nav-icon">📊</span> Dashboard</div>
+
+      <div class="nav-section">Setup</div>
+      <div class="nav-item" data-tab="accounts" onclick="goTab(this)"><span class="nav-icon">👤</span> Accounts</div>
+      <div class="nav-item" data-tab="new-campaign" onclick="goTab(this)"><span class="nav-icon">➕</span> New Campaign</div>
+
+      <div class="nav-section">Automation</div>
+      <div class="nav-item" data-tab="campaigns" onclick="goTab(this)"><span class="nav-icon">🚀</span> Campaigns <span class="nav-badge" id="badge-running" style="display:none">0</span></div>
+      <div class="nav-item" data-tab="logs" onclick="goTab(this)"><span class="nav-icon">🖥️</span> Live Logs</div>
+      <div class="nav-item" data-tab="script" onclick="goTab(this)"><span class="nav-icon">⚙️</span> Script Config</div>
+
+      <div class="nav-section">System</div>
+      <div class="nav-item" data-tab="uptime" onclick="goTab(this)"><span class="nav-icon">⏱️</span> UptimeRobot</div>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="bot-status" id="sidebar-status">
+        <div class="bot-status-row"><span class="dot dot-gray"></span> Loading...</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1 id="topbar-title">Dashboard</h1>
+        <p id="topbar-sub">Loading...</p>
+      </div>
+      <div class="topbar-right">
+        <span style="font-size:12px;color:var(--muted2);font-family:'JetBrains Mono',monospace" id="topbar-user"></span>
+        <button class="btn btn-outline btn-sm" onclick="doLogout()">Sign Out</button>
+        <button class="btn btn-primary btn-sm" onclick="goTabByName('new-campaign')">+ New Campaign</button>
+      </div>
+    </div>
+
+    <!-- ─── TAB: DASHBOARD ─────────────────────────────── -->
+    <div class="tab-content active" id="tab-dashboard">
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-label">DMs Today</div><div class="stat-value" id="s-dms-today">—</div><div class="stat-sub">across all accounts</div></div>
+        <div class="stat-card"><div class="stat-label">Total DMs Sent</div><div class="stat-value" id="s-dms-total">—</div><div class="stat-sub">all time</div></div>
+        <div class="stat-card"><div class="stat-label">Accounts Scraped</div><div class="stat-value" id="s-scraped">—</div><div class="stat-sub">in processed list</div></div>
+        <div class="stat-card"><div class="stat-label">Running Campaigns</div><div class="stat-value" id="s-running">—</div><div class="stat-sub" id="s-total-camp"></div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Active Accounts</div><button class="btn btn-ghost btn-sm" onclick="goTabByName('accounts')">Manage →</button></div>
+          <div id="dash-accounts-list" class="card-body">
+            <div class="empty-state"><div class="empty-icon">👤</div><h3>No accounts yet</h3><p>Add an Instagram account to get started.</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Recent Logs</div><button class="btn btn-ghost btn-sm" onclick="goTabByName('logs')">All logs →</button></div>
+          <div class="card-body" style="padding:12px">
+            <div class="terminal" id="dash-logs" style="height:220px"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Automation Flow</div></div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;gap:8px">
+            <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;text-align:center;min-width:140px">
+              <div style="font-size:22px;margin-bottom:6px">🔎</div>
+              <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:1px">STEP 1</div>
+              <div style="font-size:12px;font-weight:600;margin-top:3px">Search by<br>Category + Location</div>
+            </div>
+            <div style="color:var(--accent);font-size:18px;margin:0 4px">→</div>
+            <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;text-align:center;min-width:140px">
+              <div style="font-size:22px;margin-bottom:6px">📨</div>
+              <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:1px">STEP 2</div>
+              <div style="font-size:12px;font-weight:600;margin-top:3px">DM Found<br>Accounts</div>
+            </div>
+            <div style="color:var(--accent);font-size:18px;margin:0 4px">→</div>
+            <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;text-align:center;min-width:140px">
+              <div style="font-size:22px;margin-bottom:6px">👥</div>
+              <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:1px">STEP 3</div>
+              <div style="font-size:12px;font-weight:600;margin-top:3px">Scrape Followers<br>& Following</div>
+            </div>
+            <div style="color:var(--accent);font-size:18px;margin:0 4px">→</div>
+            <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 18px;text-align:center;min-width:140px">
+              <div style="font-size:22px;margin-bottom:6px">🎯</div>
+              <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:1px">STEP 4</div>
+              <div style="font-size:12px;font-weight:600;margin-top:3px">Filter by Category<br>& DM All</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: ACCOUNTS ──────────────────────────────── -->
+    <div class="tab-content" id="tab-accounts">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Add Instagram Account</div></div>
+        <div class="card-body">
+          <div class="alert alert-success" id="acc-alert-ok">Account saved successfully.</div>
+          <div class="alert alert-error" id="acc-alert-err"></div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="label">Instagram Username</label>
+              <input class="input" id="a-username" placeholder="e.g. my_store_account (no @)">
+            </div>
+            <div class="form-group">
+              <label class="label">Session Cookie (sessionid)</label>
+              <input class="input" type="password" id="a-session" placeholder="Paste your sessionid cookie value">
+              <div class="hint">Found in browser DevTools → Application → Cookies → instagram.com → sessionid</div>
+            </div>
+            <div class="form-group">
+              <label class="label">Daily DM Limit</label>
+              <input class="input" type="number" id="a-limit" value="150" min="1" max="500">
+              <div class="hint">Keep under 150 for safety. New accounts: start at 30-50.</div>
+            </div>
+            <div class="form-group">
+              <label class="label">Cooldown Between DMs (ms)</label>
+              <input class="input" type="number" id="a-cooldown" value="8000" min="3000">
+              <div class="hint">Minimum 8000ms (8 seconds) recommended. Higher = safer.</div>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px" onclick="addAccount()">Save Account</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Your Accounts</div></div>
+        <div id="accounts-table-wrap">
+          <table class="table" id="accounts-table">
+            <thead><tr>
+              <th>Account</th><th>Status</th><th>DMs Today</th><th>Total DMs</th><th>Daily Limit</th><th>Cooldown</th><th>Last Active</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="accounts-tbody"><tr><td colspan="8" class="table-empty">Loading accounts...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: NEW CAMPAIGN ──────────────────────────── -->
+    <div class="tab-content" id="tab-new-campaign">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Create Campaign</div></div>
+        <div class="card-body">
+          <div class="alert alert-success" id="camp-alert-ok"></div>
+          <div class="alert alert-error"   id="camp-alert-err"></div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="label">Campaign Name</label>
+              <input class="input" id="c-name" placeholder="e.g. Mumbai Fashion Outreach">
+            </div>
+            <div class="form-group">
+              <label class="label">Instagram Account</label>
+              <select class="select" id="c-account"><option value="">— Select Account —</option></select>
+            </div>
+            <div class="form-group">
+              <label class="label">Parent Category</label>
+              <select class="select" id="c-parent" onchange="updateSubcats(this)">
+                <option value="">— Select Category —</option>
+                <option value="fashion">Fashion</option>
+                <option value="tech">Tech & Gadgets</option>
+                <option value="food">Food & Beverage</option>
+                <option value="fitness">Fitness & Health</option>
+                <option value="travel">Travel & Tourism</option>
+                <option value="beauty">Beauty & Skincare</option>
+                <option value="business">Business & Finance</option>
+                <option value="art">Art & Design</option>
+                <option value="education">Education</option>
+                <option value="real_estate">Real Estate</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="label">Sub-Category</label>
+              <select class="select" id="c-sub"><option value="">— Select Sub-Category —</option></select>
+            </div>
+            <div class="form-group">
+              <label class="label">Target Location</label>
+              <input class="input" id="c-location" placeholder="e.g. Mumbai, Delhi, Bangalore">
+            </div>
+            <div class="form-group">
+              <label class="label">Max DMs per Run</label>
+              <input class="input" type="number" id="c-maxdm" value="100" min="1">
+            </div>
+            <div class="form-group full">
+              <label class="label">Search Keywords / Hashtags <span style="color:var(--muted);font-size:10px">(press Enter to add)</span></label>
+              <div class="tag-input-wrap" id="kw-wrap" onclick="document.getElementById('kw-input').focus()">
+                <input id="kw-input" placeholder="Type keyword and press Enter..." onkeydown="addKw(event)">
+              </div>
+            </div>
+            <div class="form-group full">
+              <label class="label">DM Message Template</label>
+              <textarea class="textarea" id="c-message" placeholder="Write your DM message...&#10;&#10;Available variables:&#10;{{username}} — target account username&#10;{{category}} — the campaign category&#10;{{sender}} — your account username"></textarea>
+              <div class="hint">Use <code>{{username}}</code>, <code>{{category}}</code>, <code>{{sender}}</code> as placeholders.</div>
+            </div>
+            <div class="form-group">
+              <label class="label">Follower/Following Scrape Depth</label>
+              <select class="select" id="c-depth">
+                <option value="1">1 level — direct followers only</option>
+                <option value="2">2 levels — followers of followers</option>
+              </select>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="label" style="margin-bottom:12px">Automation Options</div>
+          <div class="toggle-row">
+            <div class="toggle-info"><div class="toggle-name">DM from Search Results</div><div class="toggle-desc">Send DMs to accounts found via hashtag/keyword search</div></div>
+            <label class="toggle"><input type="checkbox" id="opt-search" checked><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info"><div class="toggle-name">DM from Followers/Following</div><div class="toggle-desc">Scrape and DM followers/following of found accounts</div></div>
+            <label class="toggle"><input type="checkbox" id="opt-follow" checked><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info"><div class="toggle-name">Skip Private Accounts</div><div class="toggle-desc">Don't DM accounts that have private profiles</div></div>
+            <label class="toggle"><input type="checkbox" id="opt-private" checked><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info"><div class="toggle-name">Skip Already DM'd Accounts</div><div class="toggle-desc">Never DM the same account twice from the same Instagram account</div></div>
+            <label class="toggle"><input type="checkbox" id="opt-dmed" checked><span class="toggle-track"></span><span class="toggle-thumb"></span></label>
+          </div>
+          <div style="margin-top:20px;display:flex;gap:10px">
+            <button class="btn btn-primary" onclick="createCampaign()">Create Campaign</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: CAMPAIGNS ────────────────────────────── -->
+    <div class="tab-content" id="tab-campaigns">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">All Campaigns</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadCampaigns()">↻ Refresh</button>
+        </div>
+        <div id="campaigns-table-wrap">
+          <table class="table">
+            <thead><tr>
+              <th>Campaign</th><th>Account</th><th>Category</th><th>Location</th><th>Progress</th><th>DMs Sent</th><th>Status</th><th>Created</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="campaigns-tbody"><tr><td colspan="9" class="table-empty">Loading campaigns...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: LOGS ──────────────────────────────────── -->
+    <div class="tab-content" id="tab-logs">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Live Logs</div>
+          <div style="display:flex;gap:8px">
+            <select class="select" id="log-filter-account" style="width:auto" onchange="loadLogs()"><option value="">All Accounts</option></select>
+            <button class="btn btn-ghost btn-sm" onclick="loadLogs()">↻ Refresh</button>
+            <button class="btn btn-outline btn-sm" onclick="clearLogsView()">Clear View</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="terminal" id="logs-terminal" style="height:calc(100vh - 220px);max-height:600px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: SCRIPT CONFIG ─────────────────────────── -->
+    <div class="tab-content" id="tab-script">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Tampermonkey Script Generator</div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-group">
+              <label class="label">Select Campaign</label>
+              <select class="select" id="script-campaign" onchange="generateScript()"><option value="">— Select Campaign —</option></select>
+            </div>
+            <div class="form-group">
+              <label class="label">Dashboard API URL</label>
+              <input class="input" id="script-api-url" placeholder="https://your-backend.com" oninput="generateScript()">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="copyScript()">📋 Copy Script</button>
+            <button class="btn btn-outline" onclick="downloadScript()">⬇ Download .js</button>
+            <button class="btn btn-outline" onclick="generateScript()" style="margin-left:auto">↻ Regenerate</button>
+          </div>
+          <div id="script-status" style="font-size:12px;color:var(--success);margin-bottom:10px;display:none;font-family:'JetBrains Mono',monospace"></div>
+          <div class="script-box" id="script-output"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── TAB: UPTIME ROBOT ──────────────────────────── -->
+    <div class="tab-content" id="tab-uptime">
+      <div class="three-col" style="margin-bottom:16px">
+        <div class="uptime-stat"><div class="uptime-stat-val" id="u-ping-url">—</div><div class="uptime-stat-label">Ping URL (copy into UptimeRobot)</div></div>
+        <div class="uptime-stat"><div class="uptime-stat-val">5 min</div><div class="uptime-stat-label">Recommended check interval</div></div>
+        <div class="uptime-stat"><div class="uptime-stat-val">HTTP(S)</div><div class="uptime-stat-label">Monitor Type</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Complete Setup Guide</div></div>
+        <div class="card-body">
+          <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 1 — Backend Deployment</div>
+          <div class="step"><div class="step-num">1</div><div class="step-body"><h4>Clone & Install</h4><p>Download the project. Navigate to <code>backend/</code> and run: <code>npm install</code></p></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><h4>Configure Environment</h4><p>Copy <code>.env.example</code> to <code>.env</code>. Set <code>JWT_SECRET</code> to a long random string. Set your admin username and password.</p></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Deploy to Railway / Render / VPS</h4><p>Railway (railway.app): Connect GitHub repo → Deploy. Set environment variables in the Railway dashboard. Get your public URL.</p></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body"><h4>Host the Dashboard</h4><p>Open <code>frontend/dashboard.html</code> → Set the API_URL variable at the top to your backend URL. Deploy to Netlify, Vercel, or GitHub Pages.</p></div></div>
+          <div class="divider"></div>
+          <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 2 — Tampermonkey Setup</div>
+          <div class="step"><div class="step-num">5</div><div class="step-body"><h4>Install Tampermonkey</h4><p>Install the Tampermonkey browser extension from the Chrome Web Store or Firefox Add-ons. Use Chrome for best compatibility.</p></div></div>
+          <div class="step"><div class="step-num">6</div><div class="step-body"><h4>Add Your Instagram Account</h4><p>In the dashboard, go to Accounts → add your Instagram account. To get the <code>sessionid</code>: log into Instagram in Chrome → F12 → Application → Cookies → instagram.com → find <code>sessionid</code> → copy value.</p></div></div>
+          <div class="step"><div class="step-num">7</div><div class="step-body"><h4>Create a Campaign</h4><p>Go to New Campaign → fill in all fields → click Create Campaign. Note the campaign ID from the Campaigns tab.</p></div></div>
+          <div class="step"><div class="step-num">8</div><div class="step-body"><h4>Generate & Install Script</h4><p>Go to Script Config → select your campaign → enter your backend URL → copy the generated script. In Tampermonkey: click icon → Create New Script → paste → Save (Ctrl+S).</p></div></div>
+          <div class="step"><div class="step-num">9</div><div class="step-body"><h4>Start the Bot</h4><p>Open <code>https://www.instagram.com</code> in the browser with Tampermonkey installed. The script runs automatically. Watch Live Logs to confirm it's working. Keep this browser window open.</p></div></div>
+          <div class="divider"></div>
+          <div style="font-weight:700;font-size:15px;margin-bottom:16px">Part 3 — UptimeRobot (24/7 Keepalive)</div>
+          <div class="step"><div class="step-num">10</div><div class="step-body"><h4>Create Free Account</h4><p>Sign up at <code>uptimerobot.com</code> (free plan gives you 50 monitors with 5-min intervals).</p></div></div>
+          <div class="step"><div class="step-num">11</div><div class="step-body"><h4>Add HTTP Monitor</h4><p>Click Add New Monitor → Type: HTTP(S) → Friendly Name: InstaReach → URL: your backend <code>/ping</code> endpoint → Monitoring Interval: 5 minutes → Create Monitor.</p></div></div>
+          <div class="step"><div class="step-num">12</div><div class="step-body"><h4>Set Up Alerts</h4><p>Add email or Telegram notifications so you're alerted if the backend goes down. Telegram alerts are instant and free.</p></div></div>
+          <div class="step"><div class="step-num">13</div><div class="step-body"><h4>Keep Browser Running 24/7</h4><p>UptimeRobot keeps your backend alive. For the browser (Tampermonkey) to run 24/7, leave the PC/Mac running with the Instagram tab open. Disable screen sleep. Alternatively use a cheap VPS with a real browser via <code>Xvfb</code> + Chrome.</p></div></div>
+          <div class="warn-box" style="margin-top:8px">
+            <strong>⚠ Safety Limits:</strong> Max 150 DMs/day per account · Always use random delays (8-15s) · Warm up new accounts gradually (30/day for first week) · Never use the exact same message across all accounts · Do not DM verified accounts or accounts with 100k+ followers — Instagram flags this pattern.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIG — Change API_URL to your backend URL
+// ═══════════════════════════════════════════════════════════════
+const API_URL = 'http://localhost:3001'; // ← CHANGE THIS to your deployed backend URL
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let TOKEN = localStorage.getItem('ir_token');
+let accountsCache = [];
+let campaignsCache = [];
+let logPollInterval = null;
+
+const SUBCATS = {
+  fashion: ['Clothing & Apparel','Accessories','Footwear','Jewellery','Streetwear','Luxury Fashion'],
+  tech: ['Smartphones','Laptops','Gadgets','Software','Gaming','AI & Startups'],
+  food: ['Restaurant','Cafe','Street Food','Bakery','Cloud Kitchen','Food Delivery'],
+  fitness: ['Gym & Training','Yoga','Supplements','Sportswear','Weight Loss','Wellness'],
+  travel: ['Hotels','Adventure Sports','Local Tourism','Luxury Travel','Backpacking','Travel Agency'],
+  beauty: ['Skincare','Makeup','Haircare','Nail Art','Salon','Cosmetic Brand'],
+  business: ['Finance','Startup','Digital Marketing','E-commerce','Consulting','HR & Recruitment'],
+  art: ['Illustration','Photography','Graphic Design','Digital Art','NFT','Painting'],
+  education: ['Online Courses','Coaching','Schools','Tutoring','Skill Development','EdTech'],
+  real_estate: ['Residential','Commercial','Interior Design','Architecture','Property Management','Investment'],
+  other: ['General','Community','Entertainment','Sports','News','Personal Brand'],
+};
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('api-url-show').textContent = API_URL;
+document.getElementById('u-ping-url').textContent = API_URL + '/ping';
+document.getElementById('script-api-url').value = API_URL;
+
+if (TOKEN) bootApp();
+else showLogin();
+
+function showLogin() { document.getElementById('login-overlay').style.display = 'flex'; }
+function hideLogin() { document.getElementById('login-overlay').style.display = 'none'; document.getElementById('app').style.display = 'flex'; }
+
+async function doLogin() {
+  const u = document.getElementById('l-user').value.trim();
+  const p = document.getElementById('l-pass').value;
+  const err = document.getElementById('login-error');
+  err.style.display = 'none';
+  if (!u || !p) { err.textContent = 'Enter username and password'; err.style.display = 'block'; return; }
+  try {
+    const r = await api('/api/login', 'POST', { username: u, password: p }, false);
+    TOKEN = r.token;
+    localStorage.setItem('ir_token', TOKEN);
+    document.getElementById('topbar-user').textContent = '@' + r.username;
+    hideLogin();
+    bootApp();
+  } catch(e) {
+    err.textContent = e.message || 'Login failed';
+    err.style.display = 'block';
+  }
+}
+
+function doLogout() {
+  TOKEN = null;
+  localStorage.removeItem('ir_token');
+  document.getElementById('app').style.display = 'none';
+  showLogin();
+}
+
+async function bootApp() {
+  hideLogin();
+  try {
+    await loadStats();
+    await loadAccounts();
+    await loadCampaigns();
+    loadLogs();
+    startPolling();
+    // If user is already on script tab when data loads, generate now
+    if (currentTab === 'script') _doScriptTab();
+  } catch(e) {
+    if (e.status === 401) doLogout();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API HELPER
+// ═══════════════════════════════════════════════════════════════
+async function api(path, method = 'GET', body = null, useAuth = true) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (useAuth && TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API_URL + path, opts);
+  const data = await r.json();
+  if (!r.ok) { const e = new Error(data.error || 'Request failed'); e.status = r.status; throw e; }
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════════
+const TAB_META = {
+  'dashboard':    { title: 'Dashboard',       sub: 'Overview of all automation activity' },
+  'accounts':     { title: 'Accounts',         sub: 'Manage your Instagram accounts' },
+  'new-campaign': { title: 'New Campaign',     sub: 'Set up targeting, message and launch' },
+  'campaigns':    { title: 'Campaigns',        sub: 'Monitor and control running campaigns' },
+  'logs':         { title: 'Live Logs',        sub: 'Real-time activity from Tampermonkey' },
+  'script':       { title: 'Script Config',    sub: 'Generate Tampermonkey automation script' },
+  'uptime':       { title: 'UptimeRobot Setup', sub: 'Keep your automation running 24/7' },
+};
+
+let currentTab = 'dashboard';
+
+function goTab(el) {
+  const name = el.dataset.tab;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  goTabByName(name);
+}
+
+function goTabByName(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  currentTab = name;
+  document.getElementById('topbar-title').textContent = TAB_META[name].title;
+  document.getElementById('topbar-sub').textContent = TAB_META[name].sub;
+  if (name === 'logs') loadLogs();
+  if (name === 'script') { setTimeout(_doScriptTab, 0); }
+  if (name === 'campaigns') loadCampaigns();
+  if (name === 'dashboard') { loadStats(); loadDashAccounts(); loadDashLogs(); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════════════════════════════
+async function loadStats() {
+  try {
+    const s = await api('/api/stats');
+    document.getElementById('s-dms-today').textContent = s.dmsToday.toLocaleString();
+    document.getElementById('s-dms-total').textContent = s.dmsTotal.toLocaleString();
+    document.getElementById('s-scraped').textContent = s.accountsScraped.toLocaleString();
+    document.getElementById('s-running').textContent = s.runningCampaigns;
+    document.getElementById('s-total-camp').textContent = s.totalCampaigns + ' total campaigns';
+    const badge = document.getElementById('badge-running');
+    if (s.runningCampaigns > 0) { badge.textContent = s.runningCampaigns; badge.style.display = 'inline'; }
+    else badge.style.display = 'none';
+    updateSidebarStatus(s);
+  } catch(e) { console.error('Stats error:', e); }
+}
+
+function updateSidebarStatus(s) {
+  const el = document.getElementById('sidebar-status');
+  el.innerHTML = `
+    <div class="bot-status-row"><span class="dot ${s.runningCampaigns > 0 ? 'dot-green' : 'dot-gray'}"></span>${s.runningCampaigns > 0 ? s.runningCampaigns + ' campaign(s) running' : 'No active campaigns'}</div>
+    <div class="bot-status-row"><span class="dot dot-green"></span>${s.activeAccounts} account(s)</div>
+    <div class="bot-status-row"><span class="dot dot-green"></span>${s.dmsToday} DMs today</div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCOUNTS
+// ═══════════════════════════════════════════════════════════════
+async function loadAccounts() {
+  try {
+    accountsCache = await api('/api/accounts');
+    renderAccountsTable();
+    loadDashAccounts();
+    // Populate campaign account dropdown
+    const sel = document.getElementById('c-account');
+    sel.innerHTML = '<option value="">— Select Account —</option>' +
+      accountsCache.map(a => `<option value="${a.id}">@${a.username}</option>`).join('');
+    // Log filter
+    const lf = document.getElementById('log-filter-account');
+    lf.innerHTML = '<option value="">All Accounts</option>' +
+      accountsCache.map(a => `<option value="${a.id}">@${a.username}</option>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function renderAccountsTable() {
+  const tbody = document.getElementById('accounts-tbody');
+  if (!accountsCache.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">👤</div><h3>No accounts yet</h3><p>Add your first Instagram account above.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = accountsCache.map(a => `
+    <tr>
+      <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar">${a.username[0].toUpperCase()}</div><span style="font-weight:700">@${a.username}</span></div></td>
+      <td><span class="pill pill-${a.status || 'idle'}">${a.status || 'idle'}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace">${a.dms_today}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${a.dms_total}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${a.daily_limit}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${(a.cooldown_ms/1000).toFixed(1)}s</td>
+      <td style="font-size:12px;color:var(--muted2)">${a.last_active ? timeSince(a.last_active) : '—'}</td>
+      <td><div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="editAccount('${a.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}','${a.username}')">Remove</button>
+      </div></td>
+    </tr>
+  `).join('');
+}
+
+function loadDashAccounts() {
+  const el = document.getElementById('dash-accounts-list');
+  if (!accountsCache.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div><h3>No accounts yet</h3><p>Add an Instagram account to get started.</p></div>';
+    return;
+  }
+  el.innerHTML = accountsCache.map(a => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px;background:var(--surface)">
+      <div class="avatar">${a.username[0].toUpperCase()}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">@${a.username}</div>
+        <div style="font-size:11px;color:var(--muted2);font-family:'JetBrains Mono',monospace">${a.dms_today} DMs today · ${a.dms_total} total</div>
+      </div>
+      <span class="pill pill-${a.status || 'idle'}">${a.status || 'idle'}</span>
+    </div>
+  `).join('');
+}
+
+async function addAccount() {
+  const username = document.getElementById('a-username').value.trim().replace('@','');
+  const session_id = document.getElementById('a-session').value.trim();
+  const daily_limit = parseInt(document.getElementById('a-limit').value);
+  const cooldown_ms = parseInt(document.getElementById('a-cooldown').value);
+  const ok = document.getElementById('acc-alert-ok');
+  const err = document.getElementById('acc-alert-err');
+  ok.style.display = 'none'; err.style.display = 'none';
+  if (!username || !session_id) { err.textContent = 'Username and session cookie are required.'; err.style.display = 'block'; return; }
+  try {
+    await api('/api/accounts', 'POST', { username, session_id, daily_limit, cooldown_ms });
+    ok.style.display = 'block';
+    document.getElementById('a-username').value = '';
+    document.getElementById('a-session').value = '';
+    await loadAccounts();
+    setTimeout(() => ok.style.display = 'none', 3000);
+  } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+async function deleteAccount(id, username) {
+  if (!confirm(`Remove account @${username}? This will not delete its campaigns or logs.`)) return;
+  await api('/api/accounts/' + id, 'DELETE');
+  await loadAccounts();
+}
+
+function editAccount(id) {
+  const acc = accountsCache.find(a => a.id === id);
+  if (!acc) return;
+  const newLimit = prompt(`Daily DM limit for @${acc.username}:`, acc.daily_limit);
+  if (newLimit === null) return;
+  api('/api/accounts/' + id, 'PUT', { daily_limit: parseInt(newLimit) })
+    .then(() => loadAccounts());
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CAMPAIGNS
+// ═══════════════════════════════════════════════════════════════
+function updateSubcats(sel) {
+  const subs = SUBCATS[sel.value] || [];
+  const sub = document.getElementById('c-sub');
+  sub.innerHTML = '<option value="">— Select Sub-Category —</option>' + subs.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+let keywords = [];
+function addKw(e) {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim().replace(/^#/,'');
+  if (!v || keywords.includes(v)) return;
+  keywords.push(v);
+  renderKws();
+  e.target.value = '';
+}
+function removeKw(i) { keywords.splice(i,1); renderKws(); }
+function renderKws() {
+  const wrap = document.getElementById('kw-wrap');
+  const input = document.getElementById('kw-input');
+  wrap.innerHTML = '';
+  keywords.forEach((k,i) => {
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.innerHTML = `${k} <span class="tag-x" onclick="removeKw(${i})">✕</span>`;
+    wrap.appendChild(span);
+  });
+  wrap.appendChild(input);
+  input.focus();
+}
+
+async function createCampaign() {
+  const name = document.getElementById('c-name').value.trim();
+  const account_id = document.getElementById('c-account').value;
+  const parent_category = document.getElementById('c-parent').value;
+  const sub_category = document.getElementById('c-sub').value;
+  const location = document.getElementById('c-location').value.trim();
+  const message = document.getElementById('c-message').value.trim();
+  const max_dms = parseInt(document.getElementById('c-maxdm').value);
+  const scrape_depth = parseInt(document.getElementById('c-depth').value);
+  const dm_from_search = document.getElementById('opt-search').checked;
+  const dm_from_followers = document.getElementById('opt-follow').checked;
+  const skip_private = document.getElementById('opt-private').checked;
+  const skip_dmed = document.getElementById('opt-dmed').checked;
+
+  const ok = document.getElementById('camp-alert-ok');
+  const err = document.getElementById('camp-alert-err');
+  ok.style.display = 'none'; err.style.display = 'none';
+
+  if (!name || !account_id || !parent_category || !location || !message) {
+    err.textContent = 'Please fill in: Campaign Name, Account, Category, Location, and Message.';
+    err.style.display = 'block'; return;
+  }
+  if (keywords.length === 0) {
+    err.textContent = 'Add at least one keyword/hashtag.';
+    err.style.display = 'block'; return;
+  }
+
+  try {
+    const r = await api('/api/campaigns', 'POST', {
+      name, account_id, parent_category, sub_category, location, keywords,
+      message, max_dms, scrape_depth, dm_from_search, dm_from_followers, skip_private, skip_dmed
+    });
+    ok.textContent = `Campaign "${name}" created! Go to Campaigns tab to start it.`;
+    ok.style.display = 'block';
+    keywords = []; renderKws();
+    document.getElementById('c-name').value = '';
+    document.getElementById('c-message').value = '';
+    await loadCampaigns();
+    setTimeout(() => ok.style.display = 'none', 5000);
+  } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+async function loadCampaigns() {
+  try {
+    campaignsCache = await api('/api/campaigns');
+    renderCampaignsTable();
+  } catch(e) { console.error(e); }
+}
+
+function renderCampaignsTable() {
+  const tbody = document.getElementById('campaigns-tbody');
+  if (!campaignsCache.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🚀</div><h3>No campaigns yet</h3><p>Create your first campaign to get started.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = campaignsCache.map(c => {
+    const pct = c.max_dms > 0 ? Math.min(100, Math.round((c.dms_sent / c.max_dms) * 100)) : 0;
+    return `
+      <tr>
+        <td><div style="font-weight:700">${c.name}</div></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:11px">@${c.account_username || '—'}</td>
+        <td style="font-size:12px">${c.parent_category}${c.sub_category ? ' › ' + c.sub_category : ''}</td>
+        <td style="font-size:12px">${c.location}</td>
+        <td><div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div><div style="font-size:10px;color:var(--muted);margin-top:3px">${pct}%</div></td>
+        <td style="font-family:'JetBrains Mono',monospace">${c.dms_sent} / ${c.max_dms}</td>
+        <td><span class="pill pill-${c.status}">${c.status}</span></td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDate(c.created_at)}</td>
+        <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${c.status === 'pending' || c.status === 'paused' ? `<button class="btn btn-success btn-sm" onclick="setCampStatus('${c.id}','running')">▶ Start</button>` : ''}
+          ${c.status === 'running' ? `<button class="btn btn-warn btn-sm" onclick="setCampStatus('${c.id}','paused')">⏸ Pause</button>` : ''}
+          ${c.status !== 'done' && c.status !== 'stopped' ? `<button class="btn btn-danger btn-sm" onclick="setCampStatus('${c.id}','stopped')">■ Stop</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="deleteCampaign('${c.id}','${c.name}')">🗑</button>
+        </div></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function setCampStatus(id, status) {
+  await api(`/api/campaigns/${id}/status`, 'PATCH', { status });
+  await loadCampaigns();
+  await loadStats();
+}
+
+async function deleteCampaign(id, name) {
+  if (!confirm(`Delete campaign "${name}"? This cannot be undone.`)) return;
+  await api('/api/campaigns/' + id, 'DELETE');
+  await loadCampaigns();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOGS
+// ═══════════════════════════════════════════════════════════════
+async function loadLogs() {
+  const account_id = document.getElementById('log-filter-account')?.value || '';
+  let url = '/api/logs?limit=300';
+  if (account_id) url += '&account_id=' + account_id;
+  try {
+    const logs = await api(url);
+    const el = document.getElementById('logs-terminal');
+    if (!logs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = logs.map(l => {
+      const t = l.created_at ? l.created_at.split('T')[1]?.slice(0,8) : '';
+      const lvlClass = l.level === 'error' ? 'log-lvl-error' : l.level === 'warn' ? 'log-lvl-warn' : l.level === 'success' ? 'log-lvl-success' : 'log-lvl-info';
+      const prefix = l.level === 'error' ? '✗' : l.level === 'warn' ? '⚠' : l.level === 'success' ? '✓' : '→';
+      const acc = l.account_username ? `[@${l.account_username}] ` : '';
+      return `<div class="log-entry ${lvlClass}"><span class="log-time">[${t}]</span><span class="log-msg">${prefix} ${acc}${escHtml(l.message)}${l.username ? ' — @'+escHtml(l.username) : ''}</span></div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch(e) {}
+}
+
+async function loadDashLogs() {
+  try {
+    const logs = await api('/api/logs?limit=50');
+    const el = document.getElementById('dash-logs');
+    if (!logs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = logs.slice(-30).map(l => {
+      const t = l.created_at ? l.created_at.split('T')[1]?.slice(0,8) : '';
+      const lvlClass = l.level === 'error' ? 'log-lvl-error' : l.level === 'warn' ? 'log-lvl-warn' : l.level === 'success' ? 'log-lvl-success' : 'log-lvl-info';
+      const prefix = l.level === 'error' ? '✗' : l.level === 'warn' ? '⚠' : l.level === 'success' ? '✓' : '→';
+      return `<div class="log-entry ${lvlClass}"><span class="log-time">[${t}]</span><span class="log-msg">${prefix} ${escHtml(l.message)}</span></div>`;
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch(e) {}
+}
+
+function clearLogsView() { document.getElementById('logs-terminal').innerHTML = ''; }
+
+// ═══════════════════════════════════════════════════════════════
+// SCRIPT GENERATOR
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// SCRIPT TAB — generate Tampermonkey script from campaign data
+// ═══════════════════════════════════════════════════════════════
+
+function _doScriptTab() {
+  // Rebuild dropdown from cache
+  var sel = document.getElementById('script-campaign');
+  if (campaignsCache.length > 0) {
+    var prev = sel.value;
+    sel.innerHTML = campaignsCache.map(function(c) {
+      return '<option value="' + c.id + '">' + c.name + ' (@' + (c.account_username||'?') + ')</option>';
+    }).join('');
+    // Restore selection or default to first
+    var stillValid = campaignsCache.find(function(c){ return c.id === prev; });
+    sel.value = stillValid ? prev : campaignsCache[0].id;
+  }
+  _doGenerate();
+}
+
+function loadScriptCampaigns() { _doScriptTab(); }
+function generateScript() { _doScriptTab(); }
+
+function _doGenerate() {
+  var out    = document.getElementById('script-output');
+  var status = document.getElementById('script-status');
+  var sel    = document.getElementById('script-campaign');
+  var apiUrl = (document.getElementById('script-api-url').value || '').trim().replace(/\/$/, '');
+
+  function showErr(msg) {
+    out.textContent = '// ' + msg;
+    if (status) { status.style.display = 'none'; }
+  }
+
+  if (!campaignsCache.length) return showErr('No campaigns found. Create a campaign first.');
+  if (!accountsCache.length)  return showErr('No accounts found. Add an Instagram account first.');
+  if (!apiUrl)                return showErr('Enter your API URL above  e.g. http://localhost:3001');
+
+  // Pick campaign — use dropdown value, fall back to first
+  var campId = sel.value || campaignsCache[0].id;
+  var camp   = null;
+  for (var i = 0; i < campaignsCache.length; i++) {
+    if (campaignsCache[i].id === campId) { camp = campaignsCache[i]; break; }
+  }
+  if (!camp) camp = campaignsCache[0];
+
+  // Pick account linked to campaign, fall back to first account
+  var acc = null;
+  for (var j = 0; j < accountsCache.length; j++) {
+    if (accountsCache[j].id === camp.account_id) { acc = accountsCache[j]; break; }
+  }
+  if (!acc) acc = accountsCache[0];
+
+  // Build script
+  var script = buildScript(camp, acc, apiUrl);
+  out.textContent = script;
+
+  if (status) {
+    var lines = script.split('\n').length;
+    status.style.color   = 'var(--success)';
+    status.style.display = 'block';
+    status.textContent   = '✓ Script ready — ' + lines + ' lines | Campaign: "' + camp.name + '" | Account: @' + acc.username + ' | Click Copy Script above';
+  }
+}
+
+
+function buildScript(camp, acc, apiUrl) {
+  var msg = (camp.message || '')
+    .replace(/\\/g,'\\\\')
+    .replace(/`/g,'\\`')
+    .replace(/\${/g,'\\${');
+  var kw  = JSON.stringify(Array.isArray(camp.keywords) ? camp.keywords : []);
+  var host = apiUrl.replace(/^https?:\/\//,'').split('/')[0];
+  var snd  = acc.username;
+  var cn   = camp.name;
+
+  // Build the Tampermonkey userscript as a plain string
+  // Using string concatenation (not template literals) to avoid escaping hell
+  var s = '';
+  s += '// ==UserScript==\n';
+  s += '// @name         InstaReach \u2014 ' + cn + '\n';
+  s += '// @namespace    https://instraeach.local\n';
+  s += '// @version      4.0\n';
+  s += '// @description  DM Automation \u2014 Campaign: ' + cn + '\n';
+  s += '// @author       InstaReach\n';
+  s += '// @match        https://www.instagram.com/*\n';
+  s += '// @grant        GM_xmlhttpRequest\n';
+  s += '// @grant        unsafeWindow\n';
+  s += '// @connect      ' + host + '\n';
+  s += '// @connect      www.instagram.com\n';
+  s += '// @run-at       document-idle\n';
+  s += '// ==/UserScript==\n\n';
+  s += '(async function(){\n';
+  s += '"use strict";\n\n';
+
+  // CONFIG
+  s += 'const CFG={\n';
+  s += '  campaignId:"' + camp.id + '",\n';
+  s += '  accountId:"' + acc.id + '",\n';
+  s += '  sessionKey:"' + (acc.session_id||'').trim() + '",\n';
+  s += '  apiUrl:"' + apiUrl + '",\n';
+  s += '  maxDms:' + camp.max_dms + ',\n';
+  s += '  cooldownMs:' + acc.cooldown_ms + ',\n';
+  s += '  keywords:' + kw + ',\n';
+  s += '  category:"' + camp.parent_category + '",\n';
+  s += '  subCat:"' + (camp.sub_category||'') + '",\n';
+  s += '  location:"' + camp.location + '",\n';
+  s += '  messageTpl:`' + msg + '`,\n';
+  s += '  dmSearch:' + (camp.dm_from_search   ? 'true':'false') + ',\n';
+  s += '  dmFollowers:' + (camp.dm_from_followers ? 'true':'false') + ',\n';
+  s += '  skipPrivate:' + (camp.skip_private ? 'true':'false') + ',\n';
+  s += '  skipDmed:' + (camp.skip_dmed    ? 'true':'false') + ',\n';
+  s += '  depth:' + (camp.scrape_depth||1) + ',\n';
+  s += '};\n\n';
+
+  // STATE
+  s += 'let dmCount=0,dmQueue=[],processedSet=new Set(),botRunning=true;\n';
+  s += 'const sleep=(ms,j=2000)=>new Promise(r=>setTimeout(r,ms+Math.floor(Math.random()*j)));\n\n';
+
+  // DASHBOARD API (via GM_xmlhttpRequest to bypass CORS)
+  s += 'function gmFetch(method,path,body){\n';
+  s += '  return new Promise(resolve=>{\n';
+  s += '    GM_xmlhttpRequest({method,url:CFG.apiUrl+path,\n';
+  s += '      headers:{"Content-Type":"application/json"},\n';
+  s += '      data:body?JSON.stringify(body):undefined,\n';
+  s += '      onload(r){try{resolve({ok:r.status<400,data:JSON.parse(r.responseText)});}catch{resolve({ok:false,data:{}});}},\n';
+  s += '      onerror(){resolve({ok:false,data:{}});},ontimeout(){resolve({ok:false,data:{}});},timeout:12000});\n';
+  s += '  });\n';
+  s += '}\n\n';
+
+  s += 'function log(msg,level="info",username=null){\n';
+  s += '  console.log("[InstaReach]",level.toUpperCase(),msg);\n';
+  s += '  gmFetch("POST","/api/log",{account_id:CFG.accountId,campaign_id:CFG.campaignId,level,message:msg,username,key:CFG.sessionKey});\n';
+  s += '}\n\n';
+
+  s += 'async function markProcessed(u,sent){\n';
+  s += '  processedSet.add(u);\n';
+  s += '  await gmFetch("POST","/api/processed",{account_id:CFG.accountId,campaign_id:CFG.campaignId,target_username:u,source:"bot",dm_sent:sent,key:CFG.sessionKey});\n';
+  s += '}\n\n';
+
+  s += 'async function checkCampaignRunning(){\n';
+  s += '  try{const r=await gmFetch("GET","/api/campaigns/"+CFG.campaignId+"/status");\n';
+  s += '  if(r.ok)return r.data.status==="running";return true;}catch{return true;}\n';
+  s += '}\n\n';
+
+  s += 'async function loadProcessed(){\n';
+  s += '  try{const r=await gmFetch("GET","/api/processed?account_id="+CFG.accountId+"&key="+encodeURIComponent(CFG.sessionKey));\n';
+  s += '  if(r.ok&&Array.isArray(r.data))r.data.forEach(x=>processedSet.add(x.target_username));\n';
+  s += '  log("Loaded "+processedSet.size+" processed accounts");}catch(e){log("Could not load processed: "+e,"warn");}\n';
+  s += '}\n\n';
+
+  s += 'function buildMessage(u){\n';
+  s += '  return CFG.messageTpl\n';
+  s += '    .replace(/{{username}}/g,u)\n';
+  s += '    .replace(/{{category}}/g,CFG.subCat||CFG.category)\n';
+  s += '    .replace(/{{sender}}/g,"@' + snd + '")\n';
+  s += '    .replace(/{{location}}/g,CFG.location);\n';
+  s += '}\n\n';
+
+  // INSTAGRAM API — key insight: use unsafeWindow.fetch so it runs
+  // in the PAGE context (instagram.com) where cookies are sent automatically
+  s += '// Instagram API — unsafeWindow.fetch runs in page context, so\n';
+  s += '// the browser sends session cookies automatically. No manual cookie headers needed.\n';
+  s += 'function getCsrf(){\n';
+  s += '  const m=document.cookie.match(/csrftoken=([^;]+)/);\n';
+  s += '  return m?m[1]:"";\n';
+  s += '}\n\n';
+
+  s += 'async function igGET(path){\n';
+  s += '  try{\n';
+  s += '    // unsafeWindow.fetch = page\'s own fetch, runs with instagram.com cookies\n';
+  s += '    const uf=typeof unsafeWindow!=="undefined"&&unsafeWindow.fetch?unsafeWindow.fetch.bind(unsafeWindow):fetch;\n';
+  s += '    const r=await uf("https://www.instagram.com"+path,{\n';
+  s += '      method:"GET",credentials:"include",\n';
+  s += '      headers:{\n';
+  s += '        "x-ig-app-id":"936619743392459",\n';
+  s += '        "x-csrftoken":getCsrf(),\n';
+  s += '        "x-requested-with":"XMLHttpRequest",\n';
+  s += '        "accept":"*/*",\n';
+  s += '      },\n';
+  s += '    });\n';
+  s += '    const txt=await r.text();\n';
+  s += '    if(txt.startsWith("<!DOCTYPE")||txt.includes("not-logged-in")){\n';
+  s += '      log("SESSION EXPIRED — refresh sessionid in Accounts tab, regenerate script","error");\n';
+  s += '      botRunning=false;return null;\n';
+  s += '    }\n';
+  s += '    if(!r.ok)return null;\n';
+  s += '    return JSON.parse(txt);\n';
+  s += '  }catch(e){log("igGET error: "+e.message,"error");return null;}\n';
+  s += '}\n\n';
+
+  s += 'async function igPOST(path,params){\n';
+  s += '  try{\n';
+  s += '    const uf=typeof unsafeWindow!=="undefined"&&unsafeWindow.fetch?unsafeWindow.fetch.bind(unsafeWindow):fetch;\n';
+  s += '    const r=await uf("https://www.instagram.com"+path,{\n';
+  s += '      method:"POST",credentials:"include",\n';
+  s += '      headers:{\n';
+  s += '        "x-ig-app-id":"936619743392459",\n';
+  s += '        "x-csrftoken":getCsrf(),\n';
+  s += '        "x-requested-with":"XMLHttpRequest",\n';
+  s += '        "content-type":"application/x-www-form-urlencoded",\n';
+  s += '        "x-instagram-ajax":"1",\n';
+  s += '      },\n';
+  s += '      body:new URLSearchParams(params).toString(),\n';
+  s += '    });\n';
+  s += '    const txt=await r.text();\n';
+  s += '    let data={};try{data=JSON.parse(txt);}catch{}\n';
+  s += '    return{ok:r.ok,status:r.status,data};\n';
+  s += '  }catch(e){log("igPOST error: "+e.message,"error");return{ok:false,status:0,data:{}};}\n';
+  s += '}\n\n';
+
+  s += 'async function getUserId(u){\n';
+  s += '  const d=await igGET("/api/v1/users/web_profile_info/?username="+u);\n';
+  s += '  return d?.data?.user?.id||null;\n';
+  s += '}\n\n';
+
+  s += 'async function isPrivate(u){\n';
+  s += '  const d=await igGET("/api/v1/users/web_profile_info/?username="+u);\n';
+  s += '  return d?.data?.user?.is_private===true;\n';
+  s += '}\n\n';
+
+  s += 'async function searchAccounts(kw){\n';
+  s += '  const q=encodeURIComponent(kw.replace(/^#/,""));\n';
+  s += '  const d=await igGET("/api/v1/web/search/topsearch/?context=blended&query="+q+"&include_reel=false");\n';
+  s += '  if(!d?.users)return[];\n';
+  s += '  return d.users.map(u=>u.user?.username).filter(Boolean);\n';
+  s += '}\n\n';
+
+  s += 'async function getFollowers(uid){\n';
+  s += '  const users=[];let cursor=null;\n';
+  s += '  for(let p=0;p<4;p++){\n';
+  s += '    let url="/api/v1/friendships/"+uid+"/followers/?count=50";\n';
+  s += '    if(cursor)url+="&max_id="+cursor;\n';
+  s += '    const d=await igGET(url);\n';
+  s += '    if(!d?.users)break;\n';
+  s += '    users.push(...d.users.map(u=>u.username));\n';
+  s += '    cursor=d.next_max_id||null;\n';
+  s += '    if(!cursor)break;\n';
+  s += '    await sleep(2000,1000);\n';
+  s += '  }\n';
+  s += '  return users;\n';
+  s += '}\n\n';
+
+  s += 'async function checkSession(){\n';
+  s += '  const d=await igGET("/api/v1/accounts/current_user/?edit=true");\n';
+  s += '  if(!d||!botRunning){\n';
+  s += '    if(botRunning)log("SESSION INVALID — log into instagram.com first, then update sessionid in Accounts tab","error");\n';
+  s += '    return false;\n';
+  s += '  }\n';
+  s += '  log("✓ Session valid — logged in as @"+(d?.user?.username||"?"),"success");\n';
+  s += '  return true;\n';
+  s += '}\n\n';
+
+  // SEND DM
+  s += 'async function sendDM(username,message){\n';
+  s += '  try{\n';
+  s += '    await sleep(800,1200);\n'; // humanlike pre-delay
+  s += '    const userId=await getUserId(username);\n';
+  s += '    if(!userId){log("No userId for @"+username,"warn",username);await markProcessed(username,false);return false;}\n';
+  s += '    const ctx=Date.now()+""+Math.random().toString(36).slice(2,8);\n';
+  s += '    // Method 1: broadcast (single call)\n';
+  s += '    const br=await igPOST("/api/v1/direct_v2/threads/broadcast/text/",{\n';
+  s += '      recipient_users:JSON.stringify([[userId]]),\n';
+  s += '      client_context:ctx,text:message,\n';
+  s += '      thread_type:"private",is_shh_mode:"0",\n';
+  s += '    });\n';
+  s += '    if(br.ok&&(br.data.status==="ok"||br.data.thread_id||br.data.payload)){\n';
+  s += '      log("✓ DM sent → @"+username,"success",username);\n';
+  s += '      await markProcessed(username,true);dmCount++;return true;\n';
+  s += '    }\n';
+  s += '    // Method 2: create thread then send\n';
+  s += '    log("Broadcast "+br.status+" for @"+username+" — trying thread method","warn",username);\n';
+  s += '    const tr=await igPOST("/api/v1/direct_v2/create_group_thread/",{recipient_users:JSON.stringify([[userId]])});\n';
+  s += '    if(!tr.ok){log("Thread fail @"+username+": "+tr.status,"error",username);return false;}\n';
+  s += '    const tid=tr.data?.thread?.thread_id||tr.data?.thread_id||tr.data?.thread?.pk;\n';
+  s += '    if(!tid){log("No threadId @"+username,"error",username);return false;}\n';
+  s += '    const sr=await igPOST("/api/v1/direct_v2/threads/"+tid+"/items/",{item_type:"text",text:message,client_context:ctx});\n';
+  s += '    if(sr.ok){log("✓ DM sent → @"+username,"success",username);await markProcessed(username,true);dmCount++;return true;}\n';
+  s += '    log("✗ DM failed @"+username+": HTTP "+sr.status,"error",username);\n';
+  s += '    if(sr.status===400||sr.status===403)await markProcessed(username,false);\n';
+  s += '    return false;\n';
+  s += '  }catch(e){log("Exception @"+username+": "+e.message,"error",username);return false;}\n';
+  s += '}\n\n';
+
+  // PHASES
+  s += 'async function phaseSearch(){\n';
+  s += '  log("Phase 1: Searching accounts...");\n';
+  s += '  for(const kw of CFG.keywords){\n';
+  s += '    if(!botRunning||!await checkCampaignRunning()){botRunning=false;return;}\n';
+  s += '    log(\'Searching: "\'+kw+\'"\');\n';
+  s += '    const found=await searchAccounts(kw);\n';
+  s += '    log(\'"\'+kw+\'" \u2192 \'+found.length+" accounts");\n';
+  s += '    found.forEach(u=>{if(!processedSet.has(u))dmQueue.push({username:u,source:"search"});});\n';
+  s += '    await sleep(3000,2000);\n';
+  s += '  }\n';
+  s += '  const seen=new Set();\n';
+  s += '  dmQueue=dmQueue.filter(i=>{if(seen.has(i.username))return false;seen.add(i.username);return true;});\n';
+  s += '  log("Phase 1 done \u2014 "+dmQueue.length+" unique accounts queued.");\n';
+  s += '}\n\n';
+
+  s += 'async function processDmQueue(label){\n';
+  s += '  log((label||"")+"Processing "+dmQueue.length+" accounts...");\n';
+  s += '  let sent=0;\n';
+  s += '  while(dmQueue.length>0&&botRunning){\n';
+  s += '    if(dmCount>=CFG.maxDms){log("Max DMs ("+CFG.maxDms+") reached","warn");return;}\n';
+  s += '    if(sent>0&&sent%5===0&&!await checkCampaignRunning()){botRunning=false;log("Campaign stopped","warn");return;}\n';
+  s += '    const item=dmQueue.shift();\n';
+  s += '    if(!item?.username)continue;\n';
+  s += '    if(CFG.skipDmed&&processedSet.has(item.username))continue;\n';
+  s += '    if(CFG.skipPrivate){\n';
+  s += '      const priv=await isPrivate(item.username);\n';
+  s += '      if(priv){log("Private \u2014 skipping @"+item.username,"warn",item.username);await markProcessed(item.username,false);await sleep(800,400);continue;}\n';
+  s += '    }\n';
+  s += '    await sendDM(item.username,buildMessage(item.username));\n';
+  s += '    sent++;\n';
+  s += '    // Human-like: longer break every 10 DMs\n';
+  s += '    if(sent%10===0){log("Sent "+sent+" DMs \u2014 taking a human-like 60s break...");await sleep(60000,15000);}\n';
+  s += '    else{await sleep(CFG.cooldownMs,Math.floor(CFG.cooldownMs*0.4));}\n';
+  s += '  }\n';
+  s += '}\n\n';
+
+  s += 'async function phaseFollowers(seeds){\n';
+  s += '  if(!CFG.dmFollowers||!seeds.length)return;\n';
+  s += '  log("Phase 3: Scraping "+Math.min(seeds.length,8)+" seed accounts...");\n';
+  s += '  for(const u of seeds.slice(0,8)){\n';
+  s += '    if(!botRunning||!await checkCampaignRunning()){botRunning=false;return;}\n';
+  s += '    const uid=await getUserId(u);if(!uid)continue;\n';
+  s += '    log("Scraping @"+u+"...");\n';
+  s += '    const f=await getFollowers(uid);\n';
+  s += '    f.filter(x=>!processedSet.has(x)).forEach(x=>dmQueue.push({username:x,source:"follower"}));\n';
+  s += '    await sleep(5000,3000);\n';
+  s += '  }\n';
+  s += '}\n\n';
+
+  // KEEPALIVE + MAIN
+  s += 'const keepalive=setInterval(()=>{\n';
+  s += '  if(!botRunning){clearInterval(keepalive);return;}\n';
+  s += '  gmFetch("GET","/ping?account="+CFG.accountId);\n';
+  s += '},45000);\n\n';
+
+  s += 'async function main(){\n';
+  s += '  if(location.hostname!=="www.instagram.com")return;\n';
+  s += '  log("InstaReach v4 started \u2014 Campaign: ' + cn.replace(/'/g,"\\'") + '");\n';
+  s += '  if(!await checkCampaignRunning()){log("Campaign not set to Running \u2014 go to Campaigns tab and click Start","warn");clearInterval(keepalive);return;}\n';
+  s += '  await loadProcessed();\n';
+  s += '  if(!await checkSession()){clearInterval(keepalive);return;}\n';
+  s += '  if(CFG.dmSearch&&CFG.keywords.length>0){\n';
+  s += '    await phaseSearch();\n';
+  s += '    const seeds=dmQueue.map(i=>i.username).slice(0,8);\n';
+  s += '    await processDmQueue("Phase 2: ");\n';
+  s += '    if(botRunning){await phaseFollowers(seeds);if(dmQueue.length>0)await processDmQueue("Phase 4: ");}\n';
+  s += '  }else if(CFG.dmFollowers&&CFG.keywords.length>0){\n';
+  s += '    const seed=await searchAccounts(CFG.keywords[0]);\n';
+  s += '    await phaseFollowers(seed.slice(0,6));\n';
+  s += '    await processDmQueue("Followers: ");\n';
+  s += '  }else{log("No keywords configured","warn");}\n';
+  s += '  clearInterval(keepalive);\n';
+  s += '  log("\u2713 Done. Total DMs sent: "+dmCount,"success");\n';
+  s += '}\n\n';
+
+  s += 'setTimeout(main,3500);\n\n'
+  s += '})();\n';
+
+  return s;
+}
+
+
+
+function copyScript() {
+  const text = document.getElementById('script-output').textContent;
+  const status = document.getElementById('script-status');
+  // Script is valid if it starts with the userscript header
+  if (!text.trim().startsWith('// ==UserScript==')) {
+    // Try regenerating first
+    generateScript();
+    const text2 = document.getElementById('script-output').textContent;
+    if (!text2.trim().startsWith('// ==UserScript==')) {
+      if (status) { status.style.color='var(--danger)'; status.textContent='⚠ Script not ready — select a campaign and check API URL.'; status.style.display='block'; }
+      return;
+    }
+    navigator.clipboard.writeText(text2).then(() => {
+      if (status) { status.style.color='var(--success)'; status.textContent='✓ Script copied to clipboard! Paste into Tampermonkey → New Script.'; status.style.display='block'; setTimeout(()=>status.style.display='none', 5000); }
+    });
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    if (status) { status.style.color='var(--success)'; status.textContent='✓ Script copied! Go to Tampermonkey → Create New Script → paste → Ctrl+S'; status.style.display='block'; setTimeout(()=>status.style.display='none', 6000); }
+  }).catch(() => {
+    // Clipboard API failed (e.g. file:// protocol) — select all text as fallback
+    const box = document.getElementById('script-output');
+    const range = document.createRange(); range.selectNodeContents(box);
+    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+    if (status) { status.style.color='var(--warn)'; status.textContent='⚠ Auto-copy failed — text is selected, press Ctrl+C manually.'; status.style.display='block'; }
+  });
+}
+
+function downloadScript() {
+  // Ensure script is generated
+  generateScript();
+  const text = document.getElementById('script-output').textContent;
+  const status = document.getElementById('script-status');
+  if (!text.trim().startsWith('// ==UserScript==')) {
+    if (status) { status.style.color='var(--danger)'; status.textContent='⚠ Script not ready — select a campaign first.'; status.style.display='block'; }
+    return;
+  }
+  const campSel = document.getElementById('script-campaign');
+  const campName = campSel.options[campSel.selectedIndex]?.text || 'instraeach';
+  const safeName = campName.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const blob = new Blob([text], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = safeName + '.user.js';
+  a.click();
+  if (status) { status.style.color='var(--success)'; status.textContent='✓ Script downloaded! Drag the .js file onto the Tampermonkey extension icon to install.'; status.style.display='block'; setTimeout(()=>status.style.display='none', 6000); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// POLLING
+// ═══════════════════════════════════════════════════════════════
+function startPolling() {
+  // Refresh stats every 30s
+  setInterval(() => {
+    loadStats();
+    if (currentTab === 'logs') loadLogs();
+    if (currentTab === 'dashboard') { loadDashAccounts(); loadDashLogs(); }
+    if (currentTab === 'campaigns') loadCampaigns();
+  }, 30000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function timeSince(iso) {
+  const diff = Date.now() - new Date(iso);
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  if (m < 1440) return Math.floor(m/60) + 'h ago';
+  return Math.floor(m/1440) + 'd ago';
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+</script>
+</body>
+</html>
