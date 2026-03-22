@@ -588,13 +588,26 @@ initDb().then(async db => {
     });
 
     const workerPath = require('path').join(__dirname, 'worker.py');
+    // Build Webshare proxy URL correctly with port
+    const wsUser = process.env.WEBSHARE_USER || '';
+    const wsPass = process.env.WEBSHARE_PASS || '';
+    // Webshare rotating residential correct endpoint and port
+    const wsProxy = (wsUser && wsPass)
+      ? `http://${wsUser}:${wsPass}@rotating-residential.webshare.io:9000`
+      : (process.env.IG_PROXY || '');
+
+    if (wsProxy) botLog(`Using proxy: ...@${wsProxy.split('@')[1] || wsProxy}`, 'info', account_id, campaign.id);
+
     const env = {
       ...process.env,
       IG_USERNAME   : igUser,
       IG_PASSWORD   : igPass,
       CAMPAIGN_DATA : campData,
       SESSION_FILE  : './data/ig_session.json',
-      RENDER        : '1',  // tells worker.py it's on a datacenter - enables proxy auto-fetch
+      RENDER        : '1',
+      WEBSHARE_USER : wsUser,
+      WEBSHARE_PASS : wsPass,
+      IG_PROXY      : wsProxy,
     };
 
     botLog(`=== Bot starting: ${campaign.name} ===`, 'info', account_id, campaign.id);

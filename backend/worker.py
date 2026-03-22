@@ -372,8 +372,24 @@ def test_proxy(url):
         return r.status_code in (200,400,403,429)
     except: return False
 
+def _is_valid_proxy_url(url):
+    """Check proxy URL has host AND port — rejects 'host:' with no port"""
+    if not url or url.lower() == "none": return False
+    # Must match proto://[user:pass@]host:PORT where PORT is digits
+    import re
+    return bool(re.match(r'.*:[0-9]{2,5}/*$', url.split('@')[-1] if '@' in url else url))
+
 def get_proxy(attempt=0):
     """V8: Try Webshare proxies in rotation, fall back to free list"""
+    # Check IG_PROXY env first (set by server.js with correct port)
+    env_proxy = os.environ.get("IG_PROXY","").strip()
+    if _is_valid_proxy_url(env_proxy):
+        log(f"V8: Using IG_PROXY: ...@{env_proxy.split('@')[-1]}", "success")
+        if test_proxy(env_proxy):
+            return env_proxy
+        log("V8: IG_PROXY failed test — trying Webshare list", "warn")
+
+    # Try hardcoded Webshare IPs
     if WEBSHARE_USER and WEBSHARE_PASS:
         for i in range(len(WEBSHARE_PROXIES)):
             idx = (attempt + i) % len(WEBSHARE_PROXIES)
@@ -384,11 +400,14 @@ def get_proxy(attempt=0):
                 log(f"V8: Proxy OK: {host}:{port}", "success")
                 return url
             time.sleep(1)
+        # Try Webshare rotating endpoint with correct port
+        for port in ["9000", "80", "8080"]:
+            url = f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@rotating-residential.webshare.io:{port}"
+            log(f"V8: Testing Webshare rotating :{port}")
+            if test_proxy(url):
+                log(f"V8: Webshare rotating :{port} OK", "success")
+                return url
         log("V8: All Webshare proxies failed — trying free list", "warn")
-
-    env_proxy = os.environ.get("IG_PROXY","").strip()
-    if env_proxy and env_proxy.lower() != "none":
-        return env_proxy
 
     log("V8: Fetching free proxies...", "warn")
     for src in [
