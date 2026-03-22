@@ -27,7 +27,17 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json({ limit: '20mb' }));  // allow base64 images in body
 
 // ── Serve frontend dashboard ──────────────────────────────────
-const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+// When running from root: frontend/ is a sibling folder
+// When running from backend/: frontend/ is ../frontend
+// Try both locations so it works either way
+const _frontendCandidates = [
+  path.join(__dirname, 'frontend'),          // root/frontend  (running from root)
+  path.join(__dirname, '..', 'frontend'),    // ../frontend    (running from backend/)
+  path.join(__dirname),                       // same dir       (flat structure)
+];
+const FRONTEND_DIR = _frontendCandidates.find(p => {
+  try { return fs.existsSync(path.join(p, 'dashboard.html')); } catch { return false; }
+}) || path.join(__dirname, 'frontend');
 if (fs.existsSync(FRONTEND_DIR)) {
   app.use(express.static(FRONTEND_DIR));
   app.get('/', (_req, res) => res.sendFile(path.join(FRONTEND_DIR, 'dashboard.html')));
