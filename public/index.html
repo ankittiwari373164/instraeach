@@ -309,7 +309,23 @@ tr:hover td{background:rgba(255,255,255,.012)}
   <div class="card">
     <div class="card-head">
       <div class="card-title">Accounts (<span id="acc-count">0</span> loaded)</div>
-      <div class="prog-wrap" style="width:160px"><div class="prog-bar" id="acc-prog" style="width:0%"></div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="prog-wrap" style="width:80px"><div class="prog-bar" id="acc-prog" style="width:0%"></div></div>
+        <button class="btn btn-xs btn-outline" id="btn-test-logins" onclick="testAllLogins()">🔌 Test Logins</button>
+        <button class="btn btn-xs btn-red" onclick="deleteAllAccounts()">🗑 Delete All</button>
+      </div>
+    </div>
+    <div id="test-login-panel" style="display:none;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--muted)">Test logins below — approve any challenges on your phone, then click Retry</span>
+        <button class="btn btn-xs btn-outline" onclick="retryFailedLogins()">↻ Retry Failed</button>
+      </div>
+      <div id="test-login-results" style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow-y:auto"></div>
+      <div style="margin-top:8px;font-size:12px">
+        <span style="color:var(--green)">✅ <span id="tl-ok">0</span> ready</span>&nbsp;&nbsp;
+        <span style="color:var(--red)">❌ <span id="tl-fail">0</span> need approval</span>&nbsp;&nbsp;
+        <span style="color:var(--muted)">⏳ <span id="tl-pending">0</span> pending</span>
+      </div>
     </div>
     <div class="card-body"><div class="acct-grid" id="acct-grid"><div class="empty">No accounts yet</div></div></div>
   </div>
@@ -813,6 +829,120 @@ async function uploadAccounts() {
 async function delAccount(id) {
   await api('/api/accounts/'+id,'DELETE');
   loadAccounts();
+}
+
+// ── Delete All Accounts ──────────────────────────────────────────
+async function deleteAllAccounts() {
+  if (!confirm('Remove ALL accounts? This cannot be undone.')) return;
+  await api('/api/accounts','DELETE');
+  toast('All accounts removed');
+  loadAccounts();
+}
+
+// ── Test All Logins ───────────────────────────────────────────────
+let _testLoginQueue   = [];
+let _testLoginResults = {};
+
+async function testAllLogins() {
+  const accs = await api('/api/accounts');
+  if (!accs.length) return toast('No accounts loaded','err');
+
+  // Show panel
+  document.getElementById('test-login-panel').style.display = 'block';
+  document.getElementById('btn-test-logins').disabled = true;
+  document.getElementById('btn-test-logins').textContent = '⏳ Testing...';
+
+  _testLoginResults = {};
+  _testLoginQueue   = accs.map(a => a.id);
+
+  // Render all as pending
+  renderTestResults(accs);
+  updateTestCounts();
+
+  // Test each account sequentially (avoid hammering Instagram)
+  for (const acc of accs) {
+    _testLoginResults[acc.id] = { status: 'testing', username: acc.username };
+    renderTestResults(accs);
+    updateTestCounts();
+
+    try {
+      const r = await api('/api/accounts/test-login', 'POST', { account_id: acc.id });
+      _testLoginResults[acc.id] = {
+        status:   r.ok ? 'ok' : 'fail',
+        username: acc.username,
+        error:    r.error || null,
+      };
+    } catch(e) {
+      _testLoginResults[acc.id] = { status: 'fail', username: acc.username, error: e.message };
+    }
+
+    renderTestResults(accs);
+    updateTestCounts();
+    await new Promise(r => setTimeout(r, 800)); // small delay between renders
+  }
+
+  document.getElementById('btn-test-logins').disabled = false;
+  document.getElementById('btn-test-logins').textContent = '🔌 Test Logins';
+
+  const okCount   = Object.values(_testLoginResults).filter(r => r.status==='ok').length;
+  const failCount = Object.values(_testLoginResults).filter(r => r.status==='fail').length;
+  if (failCount === 0) {
+    toast(`All ${okCount} accounts ready! ✅ You can run campaigns now.`);
+  } else {
+    toast(`${okCount} ready, ${failCount} need phone approval — approve on Instagram then click Retry Failed`, 'warn');
+  }
+}
+
+async function retryFailedLogins() {
+  const accs = await api('/api/accounts');
+  const failed = accs.filter(a => _testLoginResults[a.id]?.status === 'fail');
+  if (!failed.length) { toast('No failed accounts to retry'); return; }
+
+  toast(`Retrying ${failed.length} accounts...`);
+
+  for (const acc of failed) {
+    _testLoginResults[acc.id] = { status: 'testing', username: acc.username };
+    renderTestResults(accs);
+    updateTestCounts();
+
+    try {
+      const r = await api('/api/accounts/test-login', 'POST', { account_id: acc.id });
+      _testLoginResults[acc.id] = {
+        status:   r.ok ? 'ok' : 'fail',
+        username: acc.username,
+        error:    r.error || null,
+      };
+    } catch(e) {
+      _testLoginResults[acc.id] = { status: 'fail', username: acc.username, error: e.message };
+    }
+
+    renderTestResults(accs);
+    updateTestCounts();
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  const okCount   = Object.values(_testLoginResults).filter(r => r.status==='ok').length;
+  const failCount = Object.values(_testLoginResults).filter(r => r.status==='fail').length;
+  toast(failCount === 0 ? `All accounts ready! ✅` : `${failCount} still failing — approve on Instagram app`);
+}
+
+function renderTestResults(accs) {
+  const el = document.getElementById('test-login-results');
+  el.innerHTML = accs.map(a => {
+    const r = _testLoginResults[a.id];
+    if (!r) return '';
+    const color = r.status==='ok' ? 'var(--green)' : r.status==='fail' ? 'var(--red)' : 'var(--yellow)';
+    const icon  = r.status==='ok' ? '✅' : r.status==='fail' ? '❌' : '⏳';
+    const tip   = r.error ? ` title="${r.error.replace(/"/g,"'")}"` : '';
+    return `<span${tip} style="font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid ${color};color:${color};font-family:'JetBrains Mono',monospace;cursor:${r.error?'help':'default'}">${icon} @${esc(r.username)}</span>`;
+  }).join('');
+}
+
+function updateTestCounts() {
+  const vals = Object.values(_testLoginResults);
+  document.getElementById('tl-ok').textContent      = vals.filter(r=>r.status==='ok').length;
+  document.getElementById('tl-fail').textContent    = vals.filter(r=>r.status==='fail').length;
+  document.getElementById('tl-pending').textContent = vals.filter(r=>r.status==='testing').length;
 }
 
 async function clearAccounts() {
