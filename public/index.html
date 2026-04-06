@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InstaReach v2 — 100 Account DM Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#09090f;--surface:#101018;--card:#15151e;--card2:#1a1a25;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.11);
+  --text:#e2e2eb;--muted:#636378;--muted2:#888899;
+  --accent:#6d6bfa;--accent-dim:rgba(109,107,250,0.15);
+  --green:#22d3a8;--red:#f06060;--yellow:#f5b842;--blue:#60a5fa;
+  --ig-a:#833ab4;--ig-b:#fd1d1d;--ig-c:#fcb045;
+  --radius:12px;--radius-sm:8px;--radius-lg:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;height:100vh;overflow:hidden}
+
+/* ── Layout ── */
+.layout{display:grid;grid-template-columns:220px 1fr;grid-template-rows:52px 1fr;height:100vh}
+.topbar{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;z-index:10}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px}
+.content{overflow-y:auto;padding:28px 28px}
+
+/* ── Logo ── */
+.logo{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;letter-spacing:-.3px}
+.logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--ig-a),var(--ig-b),var(--ig-c));display:flex;align-items:center;justify-content:center;font-size:14px}
+.topbar-end{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+/* ── Engine status ── */
+.eng-pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--card);font-size:12px;font-family:'JetBrains Mono',monospace}
+.eng-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:.3s}
+.eng-dot.on{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── Nav ── */
+.nav-group{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:12px 10px 4px;margin-top:4px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:var(--radius-sm);cursor:pointer;color:var(--muted2);font-size:13.5px;font-weight:500;transition:.15s;margin:1px 0;position:relative}
+.nav-item:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.nav-item.active{background:var(--accent-dim);color:var(--accent)}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;font-family:'JetBrains Mono',monospace}
+.nav-ico{font-size:15px;width:18px;text-align:center}
+
+/* ── Page header ── */
+.ph{margin-bottom:22px}
+.ph-title{font-size:24px;font-weight:700;letter-spacing:-.5px}
+.ph-sub{color:var(--muted);font-size:13px;margin-top:3px}
+
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat-n{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
+.stat-l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-top:5px}
+.stat.c-acc .stat-n{color:var(--accent)}
+.stat.c-grn .stat-n{color:var(--green)}
+.stat.c-ylw .stat-n{color:var(--yellow)}
+.stat.c-red .stat-n{color:var(--red)}
+.stat.c-blu .stat-n{color:var(--blue)}
+
+/* ── Cards ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:18px}
+.card-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+.card-body{padding:18px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+
+/* ── Forms ── */
+.field{margin-bottom:13px}
+.field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:5px}
+input,select,textarea{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;outline:none;transition:.2s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:72px}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+select option{background:var(--card)}
+
+/* ── Buttons ── */
+.btn{padding:8px 16px;border:none;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{filter:brightness(1.1)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--text)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-green{background:rgba(34,211,168,.12);color:var(--green);border:1px solid rgba(34,211,168,.2)}.btn-green:hover{background:rgba(34,211,168,.22)}
+.btn-red{background:rgba(240,96,96,.12);color:var(--red);border:1px solid rgba(240,96,96,.2)}.btn-red:hover{background:rgba(240,96,96,.22)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-xs{padding:3px 8px;font-size:11px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* ── Tables ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:8px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);border-bottom:1px solid var(--border)}
+td{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.012)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:500}
+.badge-green{background:rgba(34,211,168,.1);color:var(--green)}
+.badge-red{background:rgba(240,96,96,.1);color:var(--red)}
+.badge-yellow{background:rgba(245,184,66,.1);color:var(--yellow)}
+.badge-blue{background:rgba(96,165,250,.1);color:var(--blue)}
+.badge-acc{background:var(--accent-dim);color:var(--accent)}
+.badge-gray{background:rgba(255,255,255,.06);color:var(--muted2)}
+
+/* ── Accounts grid ── */
+.acct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px}
+.acct-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 12px;display:flex;align-items:center;gap:9px;transition:.15s}
+.acct-card:hover{border-color:var(--border2)}
+.acct-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--ig-a),var(--ig-c));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.acct-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-stat{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.acct-del{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;opacity:.4;transition:.15s;flex-shrink:0;padding:2px}
+.acct-del:hover{opacity:1;color:var(--red)}
+.acct-status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.acct-status-dot.running{background:var(--green);animation:pulse 1s infinite}
+
+/* ── Progress ── */
+.prog-wrap{background:rgba(255,255,255,.05);border-radius:100px;height:5px;overflow:hidden;margin-top:6px}
+.prog-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--ig-a));border-radius:100px;transition:width .5s}
+
+/* ── Inbox layout ── */
+.inbox-wrap{display:grid;grid-template-columns:300px 1fr;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;height:calc(100vh - 52px - 56px - 80px);min-height:420px;background:var(--card)}
+.inbox-sidebar{border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column}
+.inbox-head{padding:12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.inbox-search{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:var(--radius-sm);font-size:13px;outline:none}
+.inbox-search:focus{border-color:var(--accent)}
+.inbox-list{overflow-y:auto;flex:1}
+.thread-item{padding:12px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.025);display:flex;gap:10px;align-items:flex-start;transition:.15s}
+.thread-item:hover{background:rgba(255,255,255,.03)}
+.thread-item.active{background:var(--accent-dim)}
+.thread-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--ig-a),var(--ig-b));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.thread-name{font-size:13.5px;font-weight:600}
+.thread-preview{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.thread-time{font-size:10px;color:var(--muted);margin-left:auto;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+.thread-unread-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:5px}
+
+/* ── Chat panel ── */
+.chat-panel{display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.chat-head{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:var(--card)}
+.chat-title{font-size:14px;font-weight:600}
+.chat-sub{font-size:12px;color:var(--muted);margin-top:1px}
+.chat-msgs{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px}
+.chat-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;text-align:center}
+.msg-row{display:flex;flex-direction:column}
+.msg-row.out{align-items:flex-end}
+.msg-bubble{max-width:70%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.5}
+.msg-row.in  .msg-bubble{background:var(--card2);border:1px solid var(--border);border-bottom-left-radius:3px}
+.msg-row.out .msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:3px}
+.msg-meta{font-size:10px;color:var(--muted);margin-top:3px;font-family:'JetBrains Mono',monospace}
+.msg-row.out .msg-meta{text-align:right}
+.chat-input-wrap{padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end;flex-shrink:0;background:var(--card)}
+.chat-input{flex:1;background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:var(--radius-sm);font-size:13px;resize:none;max-height:120px;outline:none;font-family:'Plus Jakarta Sans',sans-serif}
+.chat-input:focus{border-color:var(--accent)}
+.chat-via{font-size:11px;color:var(--muted);padding:0 14px 4px;font-style:italic}
+
+/* ── Log terminal ── */
+.log-term{background:#06060d;border-radius:var(--radius-sm);padding:12px;height:220px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7}
+.log-term::-webkit-scrollbar{width:3px}
+.log-term::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08)}
+.log-line{display:flex;gap:8px}
+.log-ts{color:var(--muted);min-width:75px;flex-shrink:0}
+.log-msg.info{color:#9090b0}
+.log-msg.success{color:var(--green)}
+.log-msg.warn{color:var(--yellow)}
+.log-msg.error{color:var(--red)}
+
+/* ── Category pills ── */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:14px}
+.cat-pill{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 13px;cursor:pointer;transition:.15s;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;color:var(--muted2);font-size:13px;font-weight:500}
+.cat-pill:hover{border-color:var(--accent);color:var(--text)}
+.cat-pill.selected{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
+
+/* ── Tab panels ── */
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;font-size:13px;z-index:9999;transform:translateY(60px);opacity:0;transition:.22s;max-width:320px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-color:rgba(34,211,168,.35);color:var(--green)}
+.toast.err{border-color:rgba(240,96,96,.35);color:var(--red)}
+
+/* ── Misc ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.divider{height:1px;background:var(--border);margin:14px 0}
+.empty{text-align:center;padding:32px;color:var(--muted);font-size:13px}
+.chip{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;background:rgba(255,255,255,.06);color:var(--muted2);margin:2px}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="logo"><div class="logo-icon">📩</div>InstaReach <span style="color:var(--muted);font-weight:400;margin-left:2px">v2</span></div>
+  <div class="topbar-end">
+    <div class="eng-pill"><div class="eng-dot" id="eng-dot"></div><span id="eng-txt">Idle</span></div>
+    <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
+  </div>
+</header>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="nav-group">Overview</div>
+  <div class="nav-item active" data-tab="dashboard" onclick="goTab(this)"><span class="nav-ico">▣</span>Dashboard</div>
+
+  <div class="nav-group">Setup</div>
+  <div class="nav-item" data-tab="accounts"  onclick="goTab(this)"><span class="nav-ico">👥</span>Accounts<span id="nb-acc" class="nav-badge" style="display:none">0</span></div>
+  <div class="nav-item" data-tab="campaigns" onclick="goTab(this)"><span class="nav-ico">🚀</span>Campaigns</div>
+
+  <div class="nav-group">Activity</div>
+  <div class="nav-item" data-tab="sent"   onclick="goTab(this)"><span class="nav-ico">📤</span>Sent DMs</div>
+  <div class="nav-item" data-tab="inbox"  onclick="goTab(this)"><span class="nav-ico">💬</span>Inbox<span id="nb-inbox" class="nav-badge" style="display:none">0</span></div>
+  <div class="nav-item" data-tab="logs"   onclick="goTab(this)"><span class="nav-ico">📋</span>Engine Logs</div>
+</nav>
+
+<!-- Content -->
+<main class="content">
+
+<!-- ════ DASHBOARD ════ -->
+<div id="tab-dashboard" class="tab-panel active">
+  <div class="ph"><div class="ph-title">Dashboard</div><div class="ph-sub">100-account DM automation · 5 DMs per account · zero repeats</div></div>
+  <div class="stats-grid">
+    <div class="stat c-acc"><div class="stat-n" id="s-acc">0</div><div class="stat-l">Accounts</div></div>
+    <div class="stat c-grn"><div class="stat-n" id="s-sent">0</div><div class="stat-l">DMs Sent</div></div>
+    <div class="stat c-ylw"><div class="stat-n" id="s-inbox">0</div><div class="stat-l">Inbox</div></div>
+    <div class="stat c-red"><div class="stat-n" id="s-unread">0</div><div class="stat-l">Unread</div></div>
+    <div class="stat c-blu"><div class="stat-n" id="s-active">0</div><div class="stat-l">Active Campaigns</div></div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-head"><div class="card-title">How it works</div></div>
+      <div class="card-body" style="font-size:13px;color:var(--muted);line-height:2">
+        1. Add up to <strong style="color:var(--text)">100 Instagram accounts</strong><br>
+        2. Create campaign → pick <strong style="color:var(--text)">category</strong> → write message<br>
+        3. Engine sends <strong style="color:var(--text)">1 DM → rotates account → 1 DM → rotates</strong><br>
+        4. Each account sends max <strong style="color:var(--text)">5 DMs</strong> total<br>
+        5. <strong style="color:var(--text)">No username ever DM'd twice</strong> across all 100 accounts<br>
+        6. Replies appear in unified <strong style="color:var(--text)">Inbox</strong> — reply via original account
+        <div class="row" style="margin-top:14px">
+          <button class="btn btn-primary" onclick="goTabByName('accounts')">+ Add Accounts</button>
+          <button class="btn btn-outline" onclick="goTabByName('campaigns')">New Campaign</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Live Logs</div><button class="btn btn-xs btn-outline" onclick="loadLogs()">↻</button></div>
+      <div class="card-body" style="padding:12px"><div class="log-term" id="log-dash"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ ACCOUNTS ════ -->
+<div id="tab-accounts" class="tab-panel">
+  <div class="ph"><div class="ph-title">Accounts</div><div class="ph-sub">Load up to 100 Instagram accounts with username + password · auto-login via instagrapi</div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-head"><div class="card-title">Add Single Account</div></div>
+      <div class="card-body">
+        <div class="field"><label>Username (no @)</label><input id="acc-u" placeholder="myaccount"></div>
+        <div class="field"><label>Password</label><input id="acc-s" type="password" placeholder="Instagram password"></div>
+        <div class="field">
+          <label>🔐 TOTP Secret (only if 2FA is ON)</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="acc-totp" placeholder="e.g. JBSWY3DPEHPK3PXP" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:12px" autocomplete="off">
+            <button class="btn btn-xs btn-outline" onclick="verifyTotp()" title="Test your TOTP secret">Test</button>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Get this from Instagram → Settings → Security → Two-Factor Auth → Authenticator App → <strong style="color:var(--text)">copy the manual key</strong></div>
+          <div id="totp-result" style="font-size:12px;margin-top:4px;display:none"></div>
+        </div>
+        <div class="field"><label>Notes (optional)</label><input id="acc-n" placeholder="e.g. personal, backup..."></div>
+        <div class="row"><button class="btn btn-primary" onclick="addAccount()">+ Add</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">📂 Upload Excel / CSV</div></div>
+      <div class="card-body">
+        <p style="color:var(--muted);font-size:12px;margin-bottom:12px">Upload a <strong style="color:var(--text)">.xlsx or .csv</strong> file with Instagram <strong style="color:var(--green)">username + password</strong> — auto-logs in & saves session. Max 100 accounts.</p>
+        <div class="field">
+          <label>Required columns: <code style="color:var(--accent)">username</code>, <code style="color:var(--accent)">password</code></label>
+          <label style="margin-top:6px">Optional: <code style="color:var(--muted2)">daily_limit</code>, <code style="color:var(--muted2)">notes</code></label>
+        </div>
+        <div id="upload-drop" onclick="document.getElementById('file-upload').click()" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:28px 16px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:12px" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border2)'">
+          <div style="font-size:28px;margin-bottom:6px">📊</div>
+          <div style="color:var(--muted2);font-size:13px">Click to choose file <span style="color:var(--muted)">or drag & drop</span></div>
+          <div id="upload-filename" style="color:var(--accent);font-size:12px;margin-top:6px;font-family:'JetBrains Mono',monospace"></div>
+        </div>
+        <input type="file" id="file-upload" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileSelect(this)">
+        <div id="upload-preview" style="display:none;margin-bottom:12px;background:var(--surface);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted2)"></div>
+        <div class="row">
+          <button class="btn btn-primary" id="btn-upload" onclick="uploadAccounts()" disabled>⬆ Upload & Replace</button>
+          <a class="btn btn-outline btn-sm" href="/api/accounts/template.csv" download>⬇ Template CSV</a>
+          <button class="btn btn-red btn-sm" onclick="clearAccounts()">Clear All</button>
+        </div>
+        <div id="upload-progress" style="display:none;margin-top:10px">
+          <div style="background:var(--border);border-radius:100px;height:4px;overflow:hidden">
+            <div id="upload-prog-bar" style="height:4px;background:var(--accent);width:0%;transition:width .4s;border-radius:100px"></div>
+          </div>
+          <div id="upload-prog-msg" style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">Accounts (<span id="acc-count">0</span> loaded)</div>
+      <div class="prog-wrap" style="width:160px"><div class="prog-bar" id="acc-prog" style="width:0%"></div></div>
+    </div>
+    <div class="card-body"><div class="acct-grid" id="acct-grid"><div class="empty">No accounts yet</div></div></div>
+  </div>
+</div>
+
+<!-- ════ CAMPAIGNS ════ -->
+<div id="tab-campaigns" class="tab-panel">
+  <div class="ph"><div class="ph-title">Campaigns</div><div class="ph-sub">Category-based targeting · round-robin account rotation · global dedup</div></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-head"><div class="card-title">New Campaign</div></div>
+      <div class="card-body">
+        <div class="field"><label>Campaign Name</label><input id="c-name" placeholder="e.g. Real Estate Delhi Q2"></div>
+        <div class="field">
+          <label>Category (auto-generates target keywords)</label>
+          <div class="cat-grid" id="cat-grid"></div>
+          <input type="hidden" id="c-cat" value="">
+        </div>
+        <div class="field"><label>Location</label><input id="c-loc" placeholder="Delhi, India" value="India"></div>
+        <div class="field"><label>Extra Keywords (optional, one per line)</label><textarea id="c-kw" placeholder="real estate agent mumbai&#10;property dealer bangalore"></textarea></div>
+        <div class="field">
+          <label>Message Template</label>
+          <textarea id="c-msg" placeholder="Hi {{username}}! I help Delhi businesses grow online with websites, social media and ads. Interested in a free consult?" style="min-height:100px"></textarea>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">Variables: <span class="chip">{{username}}</span> <span class="chip">{{account}}</span></div>
+        </div>
+        <div class="field">
+          <label>📎 Attach Image to DM (optional)</label>
+          <div id="img-drop" onclick="document.getElementById('c-img').click()" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer;transition:.2s;position:relative" onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border2)'">
+            <div id="img-preview-wrap" style="position:relative;display:inline-block">
+              <img id="img-preview" style="max-height:120px;max-width:100%;border-radius:8px;display:none">
+            </div>
+            <div id="img-placeholder" style="color:var(--muted2);font-size:13px">🖼 Click to upload image <span style="color:var(--muted)">(JPG, PNG — sent before text message)</span></div>
+            <div id="img-name" style="color:var(--accent);font-size:11px;margin-top:4px;font-family:'JetBrains Mono',monospace"></div>
+          </div>
+          <input type="file" id="c-img" accept="image/jpeg,image/png,image/jpg,image/webp" style="display:none" onchange="handleCampaignImage(this)">
+          <div id="img-clear-row" style="display:none;margin-top:6px">
+            <button class="btn btn-xs btn-red" onclick="clearCampaignImage()">✕ Remove image</button>
+            <span id="img-size-note" style="color:var(--muted);font-size:11px;margin-left:8px"></span>
+          </div>
+        </div>
+        <div class="g2">
+          <div class="field"><label>Max Targets</label><input type="number" id="c-max" value="500" min="10" max="5000"></div>
+          <div class="field"><label>DMs per Account (max 20)</label><input type="number" id="c-dpa" value="5" min="1" max="20"></div>
+        </div>
+        <div class="row"><button class="btn btn-primary" onclick="createCampaign()">Create Campaign</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="card-title">Global Dedup</div><button class="btn btn-xs btn-outline" onclick="loadDedup()">↻</button></div>
+      <div class="card-body">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+          <span style="font-size:28px;font-family:'JetBrains Mono',monospace;color:var(--accent)" id="dd-count">0</span>
+          <span style="color:var(--muted);font-size:13px">usernames already DM'd — skipped automatically</span>
+        </div>
+        <div id="dd-list" style="max-height:160px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:3px"></div>
+        <div class="divider"></div>
+        <button class="btn btn-red btn-sm" onclick="resetSent()">Reset DM History</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Campaign list -->
+  <div class="card">
+    <div class="card-head"><div class="card-title">All Campaigns</div><button class="btn btn-xs btn-outline" onclick="loadCampaigns()">↻</button></div>
+    <div class="tbl-wrap">
+      <table><thead><tr><th>Name</th><th>Category</th><th>Targets</th><th>Sent</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody id="camp-tbody"><tr><td colspan="7" class="empty">No campaigns yet</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Active run progress -->
+  <div class="card" id="run-card" style="display:none">
+    <div class="card-head"><div class="card-title">▶ Running</div><button class="btn btn-sm btn-red" onclick="stopEngine()">Stop</button></div>
+    <div class="card-body">
+      <div id="run-stats" style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted);margin-bottom:10px"></div>
+      <div class="prog-wrap"><div class="prog-bar" id="run-prog" style="width:0%"></div></div>
+      <div class="log-term" style="height:160px;margin-top:12px" id="run-log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ SENT DMs ════ -->
+<div id="tab-sent" class="tab-panel">
+  <div class="ph"><div class="ph-title">Sent DMs</div><div class="ph-sub">Every DM sent across all accounts · globally deduplicated</div></div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input id="sent-q" placeholder="Search username or message..." style="max-width:280px" oninput="loadSent()">
+    <button class="btn btn-outline btn-sm" onclick="loadSent()">Search</button>
+  </div>
+  <div class="card">
+    <div class="tbl-wrap">
+      <table><thead><tr><th>From Account</th><th>→ To User</th><th>Message</th><th>Sent At</th></tr></thead>
+      <tbody id="sent-tbody"><tr><td colspan="4" class="empty">No DMs sent yet</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════ INBOX ════ -->
+<div id="tab-inbox" class="tab-panel">
+  <div class="ph" style="margin-bottom:14px">
+    <div class="ph-title">Unified Inbox</div>
+    <div class="ph-sub">All replies across 100 accounts · reply via the original sending account</div>
+  </div>
+
+  <div class="inbox-wrap">
+    <!-- Thread list -->
+    <div class="inbox-sidebar">
+      <div class="inbox-head">
+        <input class="inbox-search" id="inbox-q" placeholder="Search conversations..." oninput="filterInbox()">
+      </div>
+      <div class="inbox-list" id="inbox-list"><div class="empty" style="padding:40px 16px">No messages yet</div></div>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat-panel">
+      <div class="chat-empty" id="chat-empty">
+        <div><div style="font-size:36px;margin-bottom:8px">💬</div>Select a conversation</div>
+      </div>
+      <div id="chat-active" style="display:none;flex-direction:column;height:100%">
+        <div class="chat-head">
+          <div class="thread-av" id="chat-av">?</div>
+          <div>
+            <div class="chat-title" id="chat-user">@username</div>
+            <div class="chat-sub" id="chat-sub">via @account</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:6px" id="chat-badges"></div>
+        </div>
+        <div class="chat-msgs" id="chat-msgs"></div>
+        <div class="chat-via" id="chat-via-info"></div>
+        <div class="chat-input-wrap">
+          <textarea class="chat-input" id="reply-txt" placeholder="Type reply… (Enter to send)" rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendReply()}"></textarea>
+          <button class="btn btn-primary" onclick="sendReply()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulate incoming (testing) -->
+  <div class="card" style="margin-top:14px">
+    <div class="card-head"><div class="card-title">Simulate Incoming Message</div></div>
+    <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="sim-from" placeholder="fromUsername" style="flex:1;min-width:130px">
+      <input id="sim-acc"  placeholder="toAccountId (optional)" style="flex:1;min-width:130px">
+      <input id="sim-msg"  placeholder="Message text" style="flex:2;min-width:200px">
+      <button class="btn btn-outline" onclick="simIncoming()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ LOGS ════ -->
+<div id="tab-logs" class="tab-panel">
+  <div class="ph"><div class="ph-title">Engine Logs</div><div class="ph-sub">Real-time DM engine activity</div></div>
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">All Logs</div>
+      <div style="display:flex;gap:8px"><button class="btn btn-xs btn-outline" onclick="loadLogs()">↻ Refresh</button></div>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="log-term" style="height:480px" id="log-full"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<!-- Login overlay -->
+<div id="login-overlay" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:36px 40px;width:340px">
+    <div class="logo" style="margin-bottom:24px;font-size:20px"><div class="logo-icon">📩</div>InstaReach v2</div>
+    <div class="field"><label>Username</label><input id="l-user" value="admin" placeholder="admin"></div>
+    <div class="field"><label>Password</label><input type="password" id="l-pass" placeholder="password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div id="l-err" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API    = '';
+let TOKEN    = localStorage.getItem('ir_v2_token');
+let _inbox   = [];
+let _active  = null;
+let _poll    = null;
+let _catSel  = '';
+
+// ── Auth ───────────────────────────────────────────────────────
+async function doLogin() {
+  const u = document.getElementById('l-user').value.trim();
+  const p = document.getElementById('l-pass').value;
+  const err = document.getElementById('l-err');
+  err.style.display = 'none';
+  try {
+    const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    TOKEN = d.token;
+    localStorage.setItem('ir_v2_token', TOKEN);
+    document.getElementById('login-overlay').style.display = 'none';
+    boot();
+  } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+function doLogout() {
+  TOKEN = null; localStorage.removeItem('ir_v2_token');
+  document.getElementById('login-overlay').style.display = 'flex';
+}
+
+// ── API helper ────────────────────────────────────────────────
+async function api(path, method='GET', body=null) {
+  const opts = {method, headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN}};
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  if (r.status === 401) { doLogout(); throw new Error('Session expired'); }
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || 'Error');
+  return d;
+}
+
+function toast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  setTimeout(()=> t.className='toast', 3000);
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function initials(s){ return (s||'?').replace('@','').slice(0,2).toUpperCase(); }
+function fmtTime(ts){ if(!ts)return'—'; const d=new Date(ts); return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(ts){ if(!ts)return'—'; return new Date(ts).toLocaleDateString([],{month:'short',day:'numeric',year:'2-digit'}); }
+function timeAgo(ts){ if(!ts)return''; const s=Math.floor((Date.now()-new Date(ts))/1000); if(s<60)return'now'; if(s<3600)return Math.floor(s/60)+'m'; if(s<86400)return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+
+// ── Tabs ──────────────────────────────────────────────────────
+function goTab(el) {
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  goTabByName(el.dataset.tab);
+}
+function goTabByName(name) {
+  document.querySelectorAll('.tab-panel').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='accounts')  loadAccounts();
+  if(name==='campaigns') { loadCampaigns(); loadDedup(); loadCategories(); }
+  if(name==='sent')      loadSent();
+  if(name==='inbox')     loadInbox();
+  if(name==='logs')      loadLogs();
+  if(name==='dashboard') { loadStats(); loadLogs(); }
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+function boot() {
+  loadStats(); loadLogs(); pollEngine(); loadCategories();
+  clearInterval(_poll);
+  _poll = setInterval(()=>{ loadStats(); pollEngine(); const a=document.querySelector('.tab-panel.active'); if(!a)return; const id=a.id.replace('tab-',''); if(id==='inbox')loadInbox(); if(id==='logs'||id==='dashboard')loadLogs(); if(id==='campaigns')loadCampaignLogs(); }, 5000);
+}
+
+// ── Stats ─────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const s = await api('/api/stats');
+    document.getElementById('s-acc').textContent    = s.totalAccounts;
+    document.getElementById('s-sent').textContent   = s.totalSent;
+    document.getElementById('s-inbox').textContent  = s.totalInbox;
+    document.getElementById('s-unread').textContent = s.unread;
+    document.getElementById('s-active').textContent = s.activeCampaigns;
+    const nb = document.getElementById('nb-inbox');
+    if(s.unread>0){nb.textContent=s.unread;nb.style.display='';}else nb.style.display='none';
+    const na = document.getElementById('nb-acc');
+    if(s.totalAccounts>0){na.textContent=s.totalAccounts;na.style.display='';}else na.style.display='none';
+  } catch {}
+}
+
+// ── Engine poll ───────────────────────────────────────────────
+async function pollEngine() {
+  try {
+    const s = await api('/api/engine/status');
+    const dot=document.getElementById('eng-dot'), txt=document.getElementById('eng-txt');
+    const card=document.getElementById('run-card');
+    if(s.running){ dot.className='eng-dot on'; txt.textContent='Running'; card.style.display=''; }
+    else { dot.className='eng-dot'; txt.textContent='Idle'; card.style.display='none'; }
+  } catch {}
+}
+
+async function loadCampaignLogs() {
+  try {
+    const logs = await api('/api/engine/logs?limit=25');
+    renderLogTerm('run-log', logs);
+  } catch {}
+}
+
+// ── Logs ──────────────────────────────────────────────────────
+function renderLogTerm(id, logs) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!logs.length) { el.innerHTML = '<div class="log-line"><span class="log-ts">--:--:--</span><span class="log-msg info">No activity yet...</span></div>'; return; }
+  el.innerHTML = logs.map(l => {
+    const ts = l.created_at ? new Date(l.created_at).toTimeString().slice(0,8) : '--:--:--';
+    return `<div class="log-line"><span class="log-ts">${ts}</span><span class="log-msg ${l.level||'info'}">${esc(l.message)}</span></div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function loadLogs() {
+  try {
+    const logs = await api('/api/engine/logs?limit=80');
+    renderLogTerm('log-dash', logs);
+    renderLogTerm('log-full', logs);
+  } catch {}
+}
+
+// ── Categories ────────────────────────────────────────────────
+async function loadCategories() {
+  try {
+    const cats = await api('/api/categories');
+    const grid = document.getElementById('cat-grid');
+    if (!grid) return;
+    grid.innerHTML = cats.map(c => `
+      <button class="cat-pill ${_catSel===c.id?'selected':''}" onclick="selectCat('${c.id}',this)">${c.label}</button>
+    `).join('');
+  } catch {}
+}
+
+function selectCat(id, el) {
+  _catSel = id;
+  document.getElementById('c-cat').value = id;
+  document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ── Accounts ──────────────────────────────────────────────────
+async function loadAccounts() {
+  try {
+    const accs = await api('/api/accounts');
+    document.getElementById('acc-count').textContent = accs.length;
+    document.getElementById('acc-prog').style.width = Math.min(accs.length,100)/100*100+'%';
+    const grid = document.getElementById('acct-grid');
+    if (!accs.length) { grid.innerHTML = '<div class="empty">No accounts loaded</div>'; return; }
+    grid.innerHTML = accs.map(a => `
+      <div class="acct-card">
+        <div class="acct-status-dot ${a.status==='running'?'running':''}"></div>
+        <div class="acct-av">${initials(a.username)}</div>
+        <div style="overflow:hidden;flex:1;min-width:0">
+          <div class="acct-name" title="@${esc(a.username)}">@${esc(a.username)}${a.totp_secret?'<span title="2FA Enabled" style="margin-left:5px;font-size:10px;background:rgba(16,185,129,.15);color:#10b981;padding:1px 5px;border-radius:20px;vertical-align:middle">🔐 2FA</span>':''}</div>
+          <div class="acct-stat">${a.dms_total||0} DMs · ${a.password?'✓ pwd':''}</div>
+        </div>
+        <button class="acct-del" onclick="delAccount('${a.id}')" title="Remove">✕</button>
+      </div>`).join('');
+  } catch {}
+}
+
+async function addAccount() {
+  const u    = document.getElementById('acc-u').value.trim();
+  const s    = document.getElementById('acc-s').value.trim();
+  const totp = document.getElementById('acc-totp').value.trim();
+  const n    = document.getElementById('acc-n').value.trim();
+  if (!u) return toast('Username required','err');
+  try {
+    await api('/api/accounts','POST',{username:u, password:s, session_id:s, notes:n, totp_secret:totp});
+    document.getElementById('acc-u').value='';
+    document.getElementById('acc-s').value='';
+    document.getElementById('acc-totp').value='';
+    document.getElementById('acc-n').value='';
+    toast('Account added');
+    loadAccounts();
+  } catch(e){ toast(e.message,'err'); }
+}
+
+async function verifyTotp() {
+  const secret = document.getElementById('acc-totp').value.trim();
+  const el = document.getElementById('totp-result');
+  if (!secret) { el.style.display='block'; el.innerHTML='<span style="color:var(--yellow)">⚠ Enter a TOTP secret first</span>'; return; }
+  el.style.display='block'; el.innerHTML='<span style="color:var(--muted)">Testing...</span>';
+  try {
+    const r = await api('/api/totp/verify','POST',{totp_secret:secret});
+    if (r.ok) {
+      el.innerHTML=`<span style="color:var(--green)">✅ Valid! Current code: <strong style="font-family:\'JetBrains Mono\',monospace;font-size:14px;letter-spacing:2px">${r.code}</strong></span>`;
+    } else {
+      el.innerHTML=`<span style="color:var(--red)">✗ Invalid: ${r.error}</span>`;
+    }
+  } catch(e){ el.innerHTML=`<span style="color:var(--red)">✗ ${e.message}</span>`; }
+}
+
+// ── File upload / Excel parsing ───────────────────────────────
+let _parsedAccounts = [];
+
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('upload-filename').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let rows = [];
+      if (file.name.endsWith('.csv')) {
+        // Parse CSV manually
+        const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        for (let i = 1; i < lines.length; i++) {
+          const vals = lines[i].split(',');
+          const obj = {};
+          headers.forEach((h, idx) => { obj[h] = (vals[idx] || '').trim(); });
+          // Keep both password and session_id
+          if (!obj.password && obj.session_id) obj.password = obj.session_id;
+          if (!obj.totp_secret) obj.totp_secret = obj.totp || '';
+          if (obj.username) rows.push(obj);
+        }
+      } else {
+        // Parse XLSX with SheetJS
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        // Normalize header keys to lowercase
+        rows = rows.map(r => {
+          const n = {};
+          Object.keys(r).forEach(k => { n[k.toLowerCase().replace(/\s+/g,'_')] = String(r[k]).trim(); });
+          // Keep both password and session_id
+          if (!n.password && n.session_id) n.password = n.session_id;
+          if (!n.totp_secret) n.totp_secret = n.totp || '';
+          return n;
+        });
+      }
+      // Validate
+      const valid = rows.filter(r => r.username && r.username.length > 0);
+      _parsedAccounts = valid;
+      const preview = document.getElementById('upload-preview');
+      if (valid.length === 0) {
+        preview.style.display = 'block';
+        preview.innerHTML = '<span style="color:var(--red)">⚠ No valid rows found — make sure column is named "username"</span>';
+        document.getElementById('btn-upload').disabled = true;
+        return;
+      }
+      const capped = Math.min(valid.length, 100);
+      const hasSession = valid.filter(r => r.password && r.password.length > 3).length;
+      const hasTotp    = valid.filter(r => r.totp_secret && r.totp_secret.length > 5).length;
+      preview.style.display = 'block';
+      preview.innerHTML = [
+        `✅ <span style="color:var(--green)">${valid.length} accounts</span> found in file`,
+        valid.length > 100 ? ` <span style="color:var(--yellow)">(only first 100 will be used)</span>` : '',
+        `<br>📋 Columns: ${Object.keys(valid[0]).join(', ')}`,
+        `<br>🔑 ${hasSession}/${valid.length} have password filled`,
+        hasTotp > 0 ? `<br>🔐 ${hasTotp}/${valid.length} have TOTP 2FA secret` : '',
+      ].join('');
+      document.getElementById('btn-upload').disabled = false;
+    } catch(err) {
+      document.getElementById('upload-preview').style.display = 'block';
+      document.getElementById('upload-preview').innerHTML = '<span style="color:var(--red)">Parse error: ' + err.message + '</span>';
+    }
+  };
+  if (file.name.endsWith('.csv')) reader.readAsText(file);
+  else reader.readAsBinaryString(file);
+}
+
+// Drag-and-drop support
+document.addEventListener('DOMContentLoaded', () => {
+  const dropZone = document.getElementById('upload-drop');
+  if (!dropZone) return;
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--accent)'; dropZone.style.background='rgba(109,107,250,0.05)'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor='var(--border2)'; dropZone.style.background=''; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor='var(--border2)'; dropZone.style.background='';
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('file-upload');
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    handleFileSelect(input);
+  });
+});
+
+async function uploadAccounts() {
+  if (!_parsedAccounts.length) return toast('No file parsed yet','err');
+  if (!confirm(`This will REPLACE all current accounts with ${Math.min(_parsedAccounts.length,100)} accounts from the file. Continue?`)) return;
+  const btn = document.getElementById('btn-upload');
+  btn.disabled = true;
+  const prog = document.getElementById('upload-progress');
+  const bar  = document.getElementById('upload-prog-bar');
+  const msg  = document.getElementById('upload-prog-msg');
+  prog.style.display = 'block';
+  bar.style.width = '30%'; msg.textContent = 'Uploading...';
+  try {
+    const r = await api('/api/accounts/upload-replace','POST',{ accounts: _parsedAccounts });
+    bar.style.width = '100%';
+    msg.textContent = `Done! ${r.added} accounts loaded, ${r.skipped} skipped.`;
+    toast(`✅ ${r.added} accounts loaded (${r.skipped} skipped)`,'ok');
+    _parsedAccounts = [];
+    document.getElementById('upload-filename').textContent = '';
+    document.getElementById('upload-preview').style.display = 'none';
+    document.getElementById('file-upload').value = '';
+    setTimeout(() => { prog.style.display='none'; bar.style.width='0%'; }, 3000);
+    loadAccounts();
+  } catch(e) {
+    bar.style.width='0%'; prog.style.display='none';
+    toast(e.message,'err');
+  }
+  btn.disabled = false;
+}
+
+async function delAccount(id) {
+  await api('/api/accounts/'+id,'DELETE');
+  loadAccounts();
+}
+
+async function clearAccounts() {
+  if (!confirm('Remove all accounts?')) return;
+  await api('/api/accounts','DELETE');
+  loadAccounts();
+}
+
+// ── Campaigns ─────────────────────────────────────────────────
+// ── Campaign image handling ───────────────────────────────────
+let _campaignImageB64 = '';
+let _campaignImageExt = 'jpg';
+
+function handleCampaignImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) return toast('Image must be under 5MB', 'err');
+  const ext = file.name.split('.').pop().toLowerCase();
+  _campaignImageExt = ext;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const b64full = e.target.result; // data:image/jpeg;base64,....
+    _campaignImageB64 = b64full.split(',')[1];
+    const preview = document.getElementById('img-preview');
+    preview.src = b64full;
+    preview.style.display = 'block';
+    document.getElementById('img-placeholder').style.display = 'none';
+    document.getElementById('img-name').textContent = file.name;
+    document.getElementById('img-clear-row').style.display = 'flex';
+    document.getElementById('img-size-note').textContent = `${(file.size/1024).toFixed(0)} KB`;
+    document.getElementById('img-drop').style.borderColor = 'var(--green)';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearCampaignImage() {
+  _campaignImageB64 = '';
+  _campaignImageExt = 'jpg';
+  document.getElementById('c-img').value = '';
+  document.getElementById('img-preview').style.display = 'none';
+  document.getElementById('img-preview').src = '';
+  document.getElementById('img-placeholder').style.display = 'block';
+  document.getElementById('img-name').textContent = '';
+  document.getElementById('img-clear-row').style.display = 'none';
+  document.getElementById('img-drop').style.borderColor = 'var(--border2)';
+}
+
+async function createCampaign() {
+  const name = document.getElementById('c-name').value.trim();
+  const cat  = document.getElementById('c-cat').value;
+  const loc  = document.getElementById('c-loc').value.trim() || 'India';
+  const msg  = document.getElementById('c-msg').value.trim();
+  const kw   = document.getElementById('c-kw').value.trim().split('\n').map(k=>k.trim()).filter(Boolean);
+  const maxT = parseInt(document.getElementById('c-max').value)||500;
+  const dpa  = parseInt(document.getElementById('c-dpa').value)||5;
+  if (!name) return toast('Campaign name required','err');
+  if (!cat)  return toast('Select a category','err');
+  if (!msg)  return toast('Message required','err');
+  try {
+    await api('/api/campaigns','POST',{name,parent_category:cat,location:loc,keywords:kw,message:msg,max_targets:maxT,dms_per_account:dpa,image_b64:_campaignImageB64,image_ext:_campaignImageExt});
+    document.getElementById('c-name').value=''; document.getElementById('c-msg').value=''; document.getElementById('c-kw').value=''; clearCampaignImage();
+    _catSel=''; document.querySelectorAll('.cat-pill').forEach(p=>p.classList.remove('selected'));
+    toast('Campaign created');
+    loadCampaigns();
+  } catch(e){ toast(e.message,'err'); }
+}
+
+async function loadCampaigns() {
+  try {
+    const camps = await api('/api/campaigns');
+    const tb = document.getElementById('camp-tbody');
+    if (!camps.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No campaigns yet</td></tr>'; return; }
+    const statBadge = s => ({
+      pending: '<span class="badge badge-gray">pending</span>',
+      running: '<span class="badge badge-yellow">running</span>',
+      done:    '<span class="badge badge-green">done</span>',
+      stopped: '<span class="badge badge-red">stopped</span>',
+    }[s] || `<span class="badge badge-gray">${s}</span>`);
+    tb.innerHTML = camps.map(c => {
+      const canRun = engine_can_run && !['running'].includes(c.status);
+      return `<tr>
+        <td><strong>${esc(c.name)}</strong>${c.image_b64?'<span style="margin-left:6px;font-size:10px;background:rgba(109,107,250,.15);color:var(--accent);padding:1px 6px;border-radius:20px">🖼 img</span>':''}</td>
+        <td><span class="badge badge-acc">${esc(c.parent_category)}</span></td>
+        <td><span class="badge badge-blue">${c.targets_found||0} found</span></td>
+        <td>${c.dms_sent||0}</td>
+        <td>${statBadge(c.status)}</td>
+        <td style="color:var(--muted);font-size:12px">${fmtDate(c.created_at)}</td>
+        <td style="display:flex;gap:6px">
+          <button class="btn btn-green btn-xs" onclick="startCampaign('${c.id}')" ${canRun?'':'disabled title="Engine already running"'}>▶ Run</button>
+          <button class="btn btn-red btn-xs" onclick="delCampaign('${c.id}')">✕</button>
+        </td></tr>`;
+    }).join('');
+  } catch {}
+}
+
+let engine_can_run = true;
+
+async function startCampaign(id) {
+  const accs = await api('/api/accounts');
+  if (!accs.length) return toast('Add accounts first!','err');
+  try {
+    await api(`/api/campaigns/${id}/start`,'POST');
+    toast('Campaign started! 🚀');
+    engine_can_run = false;
+    document.getElementById('run-card').style.display='';
+    loadCampaigns();
+  } catch(e){ toast(e.message,'err'); }
+}
+
+async function stopEngine() {
+  await api('/api/engine/stop','POST');
+  toast('Stopping...','err');
+  engine_can_run = true;
+}
+
+async function delCampaign(id) {
+  if (!confirm('Delete campaign?')) return;
+  await api('/api/campaigns/'+id,'DELETE');
+  loadCampaigns();
+}
+
+async function loadDedup() {
+  try {
+    const d = await api('/api/dedup');
+    document.getElementById('dd-count').textContent = d.count;
+    const list = document.getElementById('dd-list');
+    list.innerHTML = d.usernames.slice(0,100).map(u => `<span class="chip">@${esc(u)}</span>`).join('');
+    if (d.count > 100) list.innerHTML += `<span class="chip" style="color:var(--accent)">+${d.count-100} more</span>`;
+  } catch {}
+}
+
+async function resetSent() {
+  if (!confirm('Clear all sent DM history? (dedup list will be reset)')) return;
+  await api('/api/reset/sent','POST');
+  toast('Sent history cleared');
+  loadStats(); loadDedup();
+}
+
+// ── Sent DMs ──────────────────────────────────────────────────
+async function loadSent() {
+  try {
+    const q = document.getElementById('sent-q')?.value || '';
+    const items = await api('/api/sent'+(q?`?search=${encodeURIComponent(q)}`:''));
+    const tb = document.getElementById('sent-tbody');
+    if (!items.length) { tb.innerHTML='<tr><td colspan="4" class="empty">No DMs sent yet</td></tr>'; return; }
+    tb.innerHTML = items.map(d=>`<tr>
+      <td><span class="badge badge-acc">@${esc(d.from_username)}</span></td>
+      <td>@${esc(d.to_username)}</td>
+      <td style="color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.message)}</td>
+      <td style="color:var(--muted);font-size:12px;white-space:nowrap">${fmtDate(d.sent_at)} ${fmtTime(d.sent_at)}</td>
+    </tr>`).join('');
+  } catch {}
+}
+
+// ── Inbox ─────────────────────────────────────────────────────
+async function loadInbox() {
+  try {
+    _inbox = await api('/api/inbox');
+    renderInboxList(_inbox);
+    if (_active) {
+      const updated = _inbox.find(m=>m.id===_active);
+      if (updated) openThread(updated, false);
+    }
+  } catch {}
+}
+
+function renderInboxList(items) {
+  const el = document.getElementById('inbox-list');
+  if (!items.length) { el.innerHTML='<div class="empty" style="padding:40px 16px">No messages yet</div>'; return; }
+  el.innerHTML = items.map(m=>`
+    <div class="thread-item ${m.is_read?'':'unread'} ${_active===m.id?'active':''}" onclick='openThreadById(${m.id})'>
+      ${!m.is_read?'<div class="thread-unread-dot"></div>':'<div style="width:7px"></div>'}
+      <div class="thread-av">${initials(m.from_username)}</div>
+      <div style="flex:1;overflow:hidden">
+        <div style="display:flex;align-items:baseline;gap:5px">
+          <span class="thread-name">@${esc(m.from_username)}</span>
+          <span class="thread-time">${timeAgo(m.received_at)}</span>
+        </div>
+        <div class="thread-preview">${esc(m.message)}</div>
+        ${m.is_replied?'<span class="badge badge-green" style="font-size:10px">replied</span>':''}
+      </div>
+    </div>`).join('');
+}
+
+function filterInbox() {
+  const q = document.getElementById('inbox-q').value.toLowerCase();
+  renderInboxList(_inbox.filter(m => m.from_username.toLowerCase().includes(q) || m.message.toLowerCase().includes(q)));
+}
+
+function openThreadById(id) {
+  const m = _inbox.find(x=>x.id===id);
+  if (m) openThread(m);
+}
+
+async function openThread(msg, markRead=true) {
+  _active = msg.id;
+  if (markRead && !msg.is_read) {
+    api('/api/inbox/'+msg.id+'/read','PATCH').catch(()=>{});
+    msg.is_read = 1;
+  }
+
+  document.getElementById('chat-empty').style.display   = 'none';
+  const active = document.getElementById('chat-active');
+  active.style.display = 'flex';
+
+  document.getElementById('chat-av').textContent   = initials(msg.from_username);
+  document.getElementById('chat-user').textContent = '@'+msg.from_username;
+
+  const viaAcc = msg.sent_via_username || msg.to_username || '?';
+  document.getElementById('chat-sub').textContent  = 'via @'+viaAcc;
+  document.getElementById('chat-via-info').textContent = `Reply will be sent via @${viaAcc}`;
+  document.getElementById('chat-badges').innerHTML = `<span class="badge badge-acc">@${esc(viaAcc)}</span>`;
+
+  // Build thread: original DM → their reply → our replies
+  const bubbles = [];
+  if (msg.original_dm) {
+    bubbles.push({out:true, text:msg.original_dm, ts:msg.sent_via_username?null:msg.received_at, label:'Original DM'});
+  }
+  bubbles.push({out:false, text:msg.message, ts:msg.received_at});
+  (msg.replies||[]).forEach(r=>bubbles.push({out:true, text:r.message, ts:r.sent_at}));
+  bubbles.sort((a,b)=>new Date(a.ts||0)-new Date(b.ts||0));
+
+  const msgs = document.getElementById('chat-msgs');
+  msgs.innerHTML = bubbles.map(b=>`
+    <div class="msg-row ${b.out?'out':'in'}">
+      <div class="msg-bubble">${esc(b.text)}</div>
+      <div class="msg-meta">${b.label?b.label+' · ':''}${fmtDate(b.ts)} ${fmtTime(b.ts)}</div>
+    </div>`).join('');
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Highlight thread in list
+  document.querySelectorAll('.thread-item').forEach(el=>el.classList.remove('active'));
+  loadInbox();
+}
+
+async function sendReply() {
+  if (!_active) return;
+  const txt = document.getElementById('reply-txt');
+  const msg = txt.value.trim();
+  if (!msg) return;
+  try {
+    await api('/api/inbox/'+_active+'/reply','POST',{message:msg});
+    txt.value = '';
+    toast('Reply sent! ✓');
+    loadInbox();
+  } catch(e){ toast(e.message,'err'); }
+}
+
+async function simIncoming() {
+  const from = document.getElementById('sim-from').value.trim();
+  const acc  = document.getElementById('sim-acc').value.trim();
+  const msg  = document.getElementById('sim-msg').value.trim();
+  if (!from || !msg) return toast('Username and message required','err');
+  await api('/api/inbox','POST',{from_username:from,to_account_id:acc,message:msg});
+  document.getElementById('sim-from').value=''; document.getElementById('sim-msg').value='';
+  toast('Added to inbox');
+  loadInbox();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+if (TOKEN) { document.getElementById('login-overlay').style.display='none'; boot(); }
+</script>
+</body>
+</html>

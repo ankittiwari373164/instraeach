@@ -1,0 +1,8 @@
+node_modules/
+data/
+*.json.bak
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
